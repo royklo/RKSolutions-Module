@@ -1,4 +1,6 @@
 # RKSolutions.psm1 - Dot-source Private then Public; export only public functions
+# Private scripts (e.g. IntuneEnrollmentFlows.ps1) may define helper functions (e.g. Get-DeviceEvaluationContext,
+# Get-CloudPCProvisioningPolicyGroupInfo) that are used internally by Public cmdlets but are NOT exported as cmdlets.
 $moduleRoot = $PSScriptRoot
 
 # Load Private scripts first (shared helpers, then report-specific)
@@ -31,14 +33,12 @@ if (Test-Path $publicPath) {
     Get-ChildItem -Path $publicPath -Filter '*.ps1' -File | ForEach-Object { . $_.FullName }
 }
 
-# Export public cmdlets (Connect, Disconnect, report cmdlets, Cloud PC group info)
+# Export public cmdlets (Connect, Disconnect, report cmdlets only; helpers stay private)
 Export-ModuleMember -Function @(
     'Connect-RKGraph',
     'Disconnect-RKGraph',
     'Get-IntuneEnrollmentFlowsReport',
     'Get-IntuneAnomaliesReport',
     'Get-EntraAdminRolesReport',
-    'Get-M365LicenseAssignmentReport',
-    'Get-DeviceEvaluationContext',
-    'Get-CloudPCProvisioningPolicyGroupInfo'
+    'Get-M365LicenseAssignmentReport'
 )

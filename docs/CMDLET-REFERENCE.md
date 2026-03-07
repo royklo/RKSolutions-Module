@@ -12,10 +12,10 @@ Establishes a Microsoft Graph session for use with RKSolutions report cmdlets.
 | **RequiredScopes**        | API permission scopes. Default includes scopes needed for all report cmdlets.                        |
 | **TenantId**              | Tenant ID (optional for interactive; required for ClientSecret, Certificate, Identity, AccessToken). |
 | **ClientId**              | App (client) ID for client secret or certificate auth.                                               |
-| **ClientSecret**          | Client secret (optional for interactive).                                                            |
+| **ClientSecret**          | Client secret as **SecureString** (e.g. `ConvertTo-SecureString -String '...' -AsPlainText -Force`). |
 | **CertificateThumbprint** | Certificate thumbprint for certificate auth.                                                         |
 | **Identity**              | Use managed identity.                                                                                |
-| **AccessToken**           | Use an access token.                                                                                 |
+| **AccessToken**           | Access token as **SecureString**.                                                                     |
 | **DebugMode**             | Enable debug output.                                                                                 |
 
 

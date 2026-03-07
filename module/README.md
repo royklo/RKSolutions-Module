@@ -16,7 +16,7 @@ module/
 │   ├── Get-IntuneAnomaliesReport.ps1
 │   ├── Get-EntraAdminRolesReport.ps1
 │   └── Get-M365LicenseAssignmentReport.ps1
-└── Private/                   # Helpers (not exported, or exported via manifest)
+└── Private/                   # Helpers (not exported; used internally by Public cmdlets)
     ├── Connect-ToMgGraph.ps1
     ├── Invoke-RKSolutionsWithConnection.ps1
     ├── Invoke-GraphRequestWithPaging.ps1
@@ -49,7 +49,7 @@ Import-Module ./RKSolutions.psd1 -Force
 ## Quick start
 
 ```powershell
-Connect-RKGraph -Scopes 'DeviceManagementManagedDevices.Read.All', 'User.Read.All'
+Connect-RKGraph 
 Get-IntuneEnrollmentFlowsReport
 Disconnect-RKGraph
 ```

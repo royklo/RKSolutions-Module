@@ -24,9 +24,10 @@ RK-Solutions-PSModule/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/       # Bug report, feature request
 │   ├── PULL_REQUEST_TEMPLATE.md
-│   └── workflows/           # build-and-test.yml
+│   └── workflows/           # build-and-test.yml, trigger-publish.yml
 ├── docs/
-│   └── CMDLET-REFERENCE.md   # Parameters and example output
+│   ├── CMDLET-REFERENCE.md   # Parameters and example output
+│   └── PERMISSIONS.md        # Microsoft Graph permissions per cmdlet
 ├── CHANGELOG.md              # Release history
 ├── module/                   # Script module (see module/README.md)
 │   ├── RKSolutions.psd1
@@ -42,7 +43,7 @@ RK-Solutions-PSModule/
 
 - **PowerShell 5.1+** or **PowerShell 7+** (cross-platform)
 - **Microsoft.Graph.Authentication** (and other Graph modules as required by the cmdlets)
-- Microsoft Graph permissions / app registration for the reports you run
+- **Microsoft Graph permissions:** App registration in Azure AD / Entra ID with the scopes required by the cmdlets you use. See **[Graph permissions (full list)](docs/PERMISSIONS.md)** for a per-cmdlet breakdown.
 
 ## Installation
 
@@ -65,8 +66,8 @@ Always run `Import-Module` from the **repository root** and use `./module/RKSolu
 ## Quick start
 
 ```powershell
-# Connect to Microsoft Graph
-Connect-RKGraph -Scopes 'DeviceManagementManagedDevices.Read.All', 'User.Read.All'
+# Connect to Microsoft Graph (default scopes cover all reports)
+Connect-RKGraph
 
 # Generate reports (examples)
 Get-IntuneEnrollmentFlowsReport -AssignmentOverviewOnly

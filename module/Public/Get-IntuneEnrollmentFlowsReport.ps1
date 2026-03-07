@@ -33,13 +33,13 @@ function Get-IntuneEnrollmentFlowsReport {
         [Parameter(Mandatory = $false, ParameterSetName = 'Device')]
         [string] $ClientId,
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
-        [object] $ClientSecret,
+        [SecureString] $ClientSecret,
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
         [string] $CertificateThumbprint,
         [Parameter(Mandatory = $true, ParameterSetName = 'Identity')]
         [switch] $Identity,
         [Parameter(Mandatory = $true, ParameterSetName = 'AccessToken')]
-        [object] $AccessToken,
+        [SecureString] $AccessToken,
         [Parameter(Mandatory = $false)]
         [string] $OutputPath,
         [Parameter(Mandatory = $false)]
@@ -60,9 +60,6 @@ function Get-IntuneEnrollmentFlowsReport {
     )
 
 $ErrorActionPreference = 'Stop'
-
-if ($ClientSecret -is [string]) { $ClientSecret = ConvertTo-SecureString $ClientSecret -AsPlainText -Force }
-if ($AccessToken -is [string]) { $AccessToken = ConvertTo-SecureString $AccessToken -AsPlainText -Force }
 
 try {
     Write-Host 'Intune Assignment Overview (RKSolutions)' -ForegroundColor White

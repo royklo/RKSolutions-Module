@@ -44,25 +44,19 @@ function Connect-RKGraph {
         [Parameter(Mandatory = $false, ParameterSetName = 'Interactive')]
         [string] $ClientId,
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
-        [object] $ClientSecret,
+        [SecureString] $ClientSecret,
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
         [string] $CertificateThumbprint,
         [Parameter(Mandatory = $true, ParameterSetName = 'Identity')]
         [switch] $Identity,
         [Parameter(Mandatory = $true, ParameterSetName = 'AccessToken')]
-        [object] $AccessToken,
+        [SecureString] $AccessToken,
         [Parameter(Mandatory = $false)]
         [switch] $DebugMode
     )
     $params = @{}
     foreach ($key in $PSBoundParameters.Keys) {
         $params[$key] = $PSBoundParameters[$key]
-    }
-    if ($params.ContainsKey('ClientSecret') -and $params['ClientSecret'] -is [string]) {
-        $params['ClientSecret'] = ConvertTo-SecureString $params['ClientSecret'] -AsPlainText -Force
-    }
-    if ($params.ContainsKey('AccessToken') -and $params['AccessToken'] -is [string]) {
-        $params['AccessToken'] = ConvertTo-SecureString $params['AccessToken'] -AsPlainText -Force
     }
     $connected = Connect-ToMgGraph @params
     if ($connected) {

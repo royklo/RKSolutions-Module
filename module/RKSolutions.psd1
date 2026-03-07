@@ -14,9 +14,7 @@
         'Get-IntuneEnrollmentFlowsReport',
         'Get-IntuneAnomaliesReport',
         'Get-EntraAdminRolesReport',
-        'Get-M365LicenseAssignmentReport',
-        'Get-DeviceEvaluationContext',
-        'Get-CloudPCProvisioningPolicyGroupInfo'
+        'Get-M365LicenseAssignmentReport'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
