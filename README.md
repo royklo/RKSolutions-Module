@@ -24,7 +24,7 @@ RK-Solutions-PSModule/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/       # Bug report, feature request
 │   ├── PULL_REQUEST_TEMPLATE.md
-│   └── workflows/           # build-and-test.yml, trigger-publish.yml
+│   └── workflows/           # build-and-test.yml
 ├── docs/
 │   └── CMDLET-REFERENCE.md   # Parameters and example output
 ├── CHANGELOG.md              # Release history
@@ -88,8 +88,6 @@ Disconnect-RKGraph
 | **Get-IntuneAnomaliesReport** | Generates Intune anomalies report. |
 | **Get-EntraAdminRolesReport** | Generates Entra admin roles report. |
 | **Get-M365LicenseAssignmentReport** | Generates M365 license assignment report. |
-| **Get-DeviceEvaluationContext** | Returns device evaluation context (used by enrollment flows report). |
-| **Get-CloudPCProvisioningPolicyGroupInfo** | Returns Cloud PC provisioning policy group info. |
 
 For full parameter details and examples, see **[Cmdlet Reference](docs/CMDLET-REFERENCE.md)**.
 
