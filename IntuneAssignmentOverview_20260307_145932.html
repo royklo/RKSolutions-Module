@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inforced by Roy Intune Enrollment Flow Visualization</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        :root { --primary-color: #0078d4; --secondary-color: #2b88d8; --accent-color: #107c10; --bg-color: #e2e8f0; --card-bg: #eef2f7; --text-color: #334155; --text-secondary: #64748b; --border-color: #cbd5e1; --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05); --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); --bg-secondary: #e8ecf1; --bg-tertiary: #e2e8f0; --table-hover-bg: rgba(0,0,0,0.04); }
+        [data-theme="dark"] { --bg-color: #0d0d0d; --card-bg: #1a1a1a; --text-color: #e5e5e5; --text-secondary: #a3a3a3; --border-color: #404040; --bg-secondary: #1a1a1a; --bg-tertiary: #262626; --table-hover-bg: rgba(255,255,255,0.05); }
+        body { background: var(--bg-color); color: var(--text-color); min-height: 100vh; font-family: Segoe UI, Roboto, sans-serif; }
+        .app-container { min-height: 100vh; padding: 0; display: flex; flex-direction: column; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; background: var(--card-bg); flex: 1; }
+        .theme-toggle { position: absolute; top: 10px; right: 10px; z-index: 1050; display: flex; align-items: center; gap: 6px; background-color: var(--card-bg); padding: 6px 10px; border-radius: 30px; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); }
+        .theme-toggle-switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .theme-toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .theme-toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 20px; }
+        .theme-toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        input:checked + .theme-toggle-slider { background-color: #334155; }
+        input:checked + .theme-toggle-slider:before { transform: translateX(20px); }
+        .theme-icon { font-size: 12px; color: var(--text-color); }
+        .dashboard-header { background: linear-gradient(180deg, #1e293b 0%, #334155 100%); color: #fff; padding: 3rem 2rem; text-align: center; position: relative; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); border-bottom: 3px solid #475569; }
+        .dashboard-title { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 1.5rem; margin-bottom: 1rem; }
+        .dashboard-title h1 { margin: 0; font-size: 2.5rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+        .logo { height: 50px; width: 50px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.3)); }
+        .report-date { font-size: 0.9375rem; color: rgba(255,255,255,0.88); position: relative; z-index: 2; background: rgba(255,255,255,0.08); padding: 0.6rem 1.25rem; border-radius: 999px; border: 1px solid rgba(255,255,255,0.15); display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 500; }
+        .overview-container { background: linear-gradient(135deg, var(--bg-color) 0%, var(--bg-secondary) 100%); border-radius: 16px; padding: 2rem; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; }
+        .overview-container::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #475569; }
+        .overview-header { text-align: center; margin-bottom: 2.5rem; background: linear-gradient(180deg, #1e293b 0%, #334155 100%); color: #fff; margin-left: -2rem; margin-right: -2rem; margin-top: -2rem; padding: 2rem 2rem 1.5rem; border-radius: 16px 16px 0 0; border-bottom: 2px solid rgba(255,255,255,0.06); }
+        .overview-header h2 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff; letter-spacing: -0.02em; }
+        .overview-header p { font-size: 1.125rem; color: rgba(255,255,255,0.9); margin: 0; }
+        .summary-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease; box-shadow: var(--shadow-sm); min-height: 160px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .overview-tiles-row .summary-card { min-height: 100px; padding: 0.75rem 1rem; }
+        .overview-tiles-row .summary-card .card-icon { width: 36px; height: 36px; font-size: 1rem; margin: 0 auto 0.4rem; }
+        .overview-tiles-row .summary-card .card-title { font-size: 1.5rem; margin: 0.2rem 0; }
+        .overview-tiles-row .summary-card .card-text { min-height: 2em; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; text-align: center; }
+        .summary-card .card-icon { width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-size: 1.5rem; color: white; }
+        .summary-card.border-primary .card-icon { background: linear-gradient(135deg, #0078d4, #106ebe); }
+        .summary-card.border-success .card-icon { background: linear-gradient(135deg, #107c10, #0e6e0e); }
+        .summary-card.border-warning .card-icon { background: linear-gradient(135deg, #ffc107, #e0a800); }
+        .summary-card.border-danger .card-icon { background: linear-gradient(135deg, #d83b01, #c13401); }
+        .summary-card .card-title { font-size: 2.5rem; font-weight: 700; margin: 0.5rem 0; }
+        .summary-card .card-text { font-size: 0.9rem; font-weight: 500; color: var(--text-secondary); margin: 0; line-height: 1.4; text-align: center; }
+        .modern-table-container { background: var(--card-bg); border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; border: 1px solid var(--border-color); }
+        .modern-table-header { background: linear-gradient(180deg, #1e293b 0%, #334155 100%); padding: 1.5rem; border-bottom: 2px solid #475569; color: #fff; }
+        .modern-table-header h5 { margin: 0; font-weight: 600; font-size: 1.25rem; color: #fff; }
+        .modern-table-header small { color: rgba(255,255,255,0.85); font-size: 0.875rem; }
+        .modern-table-body { padding: 0; }
+        .modern-table { margin: 0; }
+        .modern-table thead th { background: var(--bg-secondary); border: none; font-weight: 600; font-size: 0.875rem; padding: 1rem 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .modern-table tbody tr { border-bottom: 1px solid var(--border-color); transition: background-color 0.2s ease; }
+        .modern-table tbody tr:hover { background-color: var(--table-hover-bg); }
+        .modern-table tbody td { padding: 1rem 0.75rem; border: none; vertical-align: middle; }
+        .assignment-filters-modern { background: linear-gradient(180deg, var(--card-bg) 0%, var(--bg-secondary) 100%); border-bottom: 1px solid var(--border-color); padding: 1rem 1.25rem; }
+        .assignment-filters-modern .assignment-filters-inner { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem; }
+        .assignment-filters-modern .filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+        .assignment-filters-modern .filter-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); margin: 0; }
+        .assignment-filters-modern .filter-select { min-width: 140px; padding: 0.5rem 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); font-size: 0.875rem; color: var(--text-color); }
+        .assignment-filters-modern .filter-reset-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); font-size: 0.875rem; color: var(--text-secondary); cursor: pointer; height: 2.15rem; }
+        .assignment-filters-modern .filter-multiselect { min-height: 80px; min-width: 160px; }
+        .assignment-filters-modern .filter-checkbox-group { display: flex; flex-direction: column; justify-content: flex-end; }
+        .assignment-filters-modern .filter-checkbox-label { font-size: 0.875rem; color: var(--text-color); margin: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+        [data-theme="dark"] .assignment-filters-modern { background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--card-bg) 100%); border-color: var(--border-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-select, [data-theme="dark"] .assignment-filters-modern .filter-reset-btn { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn { background: var(--card-bg); border-color: var(--border-color); color: var(--text-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:hover, [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:focus, [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn.show { background: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown { background: var(--card-bg); border-color: var(--border-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item { color: var(--text-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item:hover { background: var(--bg-tertiary); color: var(--text-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown label { color: var(--text-color); }
+        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown input.filter-cb { accent-color: #a3a3a3; }
+        [data-theme="dark"] .dashboard-header { background: linear-gradient(180deg, #171717 0%, #262626 100%); border-bottom-color: var(--border-color); box-shadow: none; }
+        [data-theme="dark"] .dashboard-title h1 { color: var(--text-color); }
+        [data-theme="dark"] .report-date { background: rgba(255,255,255,0.06); border-color: var(--border-color); color: var(--text-secondary); }
+        [data-theme="dark"] .overview-header { background: var(--bg-tertiary); color: var(--text-color); border-bottom-color: var(--border-color); }
+        [data-theme="dark"] .overview-header h2 { color: var(--text-color); }
+        [data-theme="dark"] .overview-header p { color: var(--text-secondary); opacity: 1; }
+        [data-theme="dark"] .table, [data-theme="dark"] .modern-table { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
+        [data-theme="dark"] .table thead th, [data-theme="dark"] .modern-table thead th { background: var(--bg-tertiary); color: var(--text-color); border-color: var(--border-color); }
+        [data-theme="dark"] .table tbody td, [data-theme="dark"] .modern-table tbody td { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
+        [data-theme="dark"] .table tbody tr:hover td, [data-theme="dark"] .modern-table tbody tr:hover td { background: var(--table-hover-bg); }
+        [data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) td { background: var(--bg-secondary); }
+        [data-theme="dark"] .dataTables_wrapper { color: var(--text-color); background: var(--card-bg); border-color: var(--border-color); }
+        [data-theme="dark"] .dataTables_wrapper .table { background: var(--card-bg); color: var(--text-color); }
+        [data-theme="dark"] .modern-table-container .modern-table-body, [data-theme="dark"] .modern-table-container .table-responsive { background: var(--card-bg); }
+        [data-theme="dark"] .modern-table-container { background: var(--card-bg); }
+        [data-theme="dark"] .modern-table-header { background: var(--bg-tertiary); color: var(--text-color); border-bottom-color: var(--border-color); }
+        [data-theme="dark"] .modern-table-header h5, [data-theme="dark"] .modern-table-header small { color: var(--text-color); }
+        [data-theme="dark"] footer { background: linear-gradient(180deg, #171717 0%, #262626 100%); border-top-color: var(--border-color); }
+        [data-theme="dark"] .dataTables_filter input, [data-theme="dark"] .dataTables_length select { background: var(--bg-tertiary); color: var(--text-color); border-color: var(--border-color); }
+        [data-theme="dark"] .dataTables_info { color: var(--text-secondary); }
+        [data-theme="dark"] .dataTables_paginate .page-link { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
+        [data-theme="dark"] .dataTables_paginate .page-link:hover { background: var(--bg-tertiary); color: var(--text-color); }
+        [data-theme="dark"] .dataTables_paginate .page-item.active .page-link { background: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-color); }
+        [data-theme="dark"] .dataTables_paginate .page-item.disabled .page-link { background: var(--bg-secondary); color: var(--text-secondary); }
+        [data-theme="dark"] .dt-button { background: var(--bg-tertiary); color: var(--text-color); border-color: var(--border-color); }
+        [data-theme="dark"] .dt-button:hover { background: var(--table-hover-bg); color: var(--text-color); }
+        footer { background: linear-gradient(180deg, #1e293b 0%, #334155 100%); color: rgba(255,255,255,0.9); padding: 2rem 0 1rem 0; margin-top: 3rem; border-top: 3px solid #475569; }
+        .footer-content { max-width: 1200px; margin: 0 auto; padding: 0 1rem; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2rem; }
+        .footer-brand { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .footer-description { font-size: 0.85rem; opacity: 0.9; margin: 0; }
+        .footer-center { text-align: center; }
+        .footer-logo { width: 40px; height: 40px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5rem; font-size: 1.2rem; font-weight: bold; }
+        .footer-tagline { font-size: 0.8rem; opacity: 0.8; margin: 0; }
+        .footer-links { text-align: right; }
+        .footer-social { display: flex; gap: 1rem; justify-content: flex-end; margin-bottom: 0.5rem; }
+        .footer-social a { color: rgba(255,255,255,0.8); transition: all 0.3s ease; }
+        .footer-copyright { font-size: 0.75rem; opacity: 0.7; margin: 0; }
+        .footer-bottom { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); text-align: center; }
+        .footer-tech-stack { font-size: 0.7rem; opacity: 0.6; margin: 0.5rem 0 0 0; }
+        .tech-badge { display: inline-block; background: rgba(255,255,255,0.15); padding: 0.2rem 0.5rem; border-radius: 6px; margin: 0 0.2rem; }
+    </style>
+</head>
+<body>
+    <div class="theme-toggle">
+        <div class="theme-icon"><i class="fas fa-sun"></i></div>
+        <label class="theme-toggle-switch">
+            <input type="checkbox" id="themeToggle">
+            <span class="theme-toggle-slider"></span>
+        </label>
+        <div class="theme-icon"><i class="fas fa-moon"></i></div>
+    </div>
+    <div class="app-container">
+        <div class="container">
+            <div class="dashboard-header">
+                <div class="dashboard-title">
+                    <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                        <path fill="#ff5722" d="M6 6H22V22H6z" transform="rotate(-180 14 14)"/>
+                        <path fill="#4caf50" d="M26 6H42V22H26z" transform="rotate(-180 34 14)"/>
+                        <path fill="#ffc107" d="M6 26H22V42H6z" transform="rotate(-180 14 34)"/>
+                        <path fill="#03a9f4" d="M26 26H42V42H26z" transform="rotate(-180 34 34)"/>
+                    </svg>
+                    <h1>Inforced by Roy Enrollment Flow Visualization</h1>
+                </div>
+                <div class="report-date">
+                    <i class="fas fa-calendar-alt me-2"></i>
+                    Report generated on: March 07, 2026 at 14:59
+                </div>
+            </div>
+            <ul class="nav nav-tabs" id="flowTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="assignment-overview-tab" data-bs-toggle="tab" data-bs-target="#assignment-overview" type="button" role="tab" aria-controls="assignment-overview" aria-selected="true">
+                        <i class="fas fa-chart-pie me-2"></i>Assignment Overview
+                    </button>
+                </li>
+            </ul>
+            <div class="tab-content" id="flowTabContent">
+                <div class="tab-pane fade show active" id="assignment-overview" role="tabpanel" aria-labelledby="assignment-overview-tab" tabindex="0">
+                    <div class="overview-container">
+                        <div class="overview-header">
+                            <h2><i class="fas fa-chart-pie me-3"></i>Assignment Overview</h2>
+                            <p>Complete view of all policy assignments across your tenant</p>
+                        </div>
+                        <div class="row g-4 mb-5 overview-tiles-row">
+                            <div class="col-md-6">
+                                <div class="summary-card border-primary text-center">
+                                    <div class="card-icon"><i class="fas fa-file-alt"></i></div>
+                                    <h3 class="card-title">97</h3>
+                                    <p class="card-text">Total Policies, Apps and (remediation) Scripts</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="summary-card border-danger text-center">
+                                    <div class="card-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                                    <h3 class="card-title">30</h3>
+                                    <p class="card-text">Unassigned Policies</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mb-5">
+                            <div class="col-12">
+                                <div class="modern-table-container">
+                                    <div class="modern-table-header">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h5><i class="fas fa-table me-2"></i>All Policy Assignments Overview</h5>
+                                                <small>Complete view of all policy assignments across your tenant</small>
+                                            </div>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="showAllAssignments">
+                                                <label class="form-check-label" for="showAllAssignments"><i class="fas fa-list me-1"></i>Show All Results</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="assignment-filters assignment-filters-modern" id="overviewFiltersBar">
+                                        <div class="assignment-filters-inner">
+                                            <div class="filter-group dropdown">
+                                                <label class="filter-label"><i class="fas fa-tag fa-fw"></i>Category</label>
+                                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle filter-dropdown-btn" type="button" id="overviewFilterCategoryBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">Select...</button>
+                                                <div class="dropdown-menu filter-checkbox-dropdown" id="overviewFilterCategoryMenu"></div>
+                                            </div>
+                                            <div class="filter-group dropdown">
+                                                <label class="filter-label"><i class="fas fa-bullseye fa-fw"></i>Target</label>
+                                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle filter-dropdown-btn" type="button" id="overviewFilterTargetBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">Select...</button>
+                                                <div class="dropdown-menu filter-checkbox-dropdown" id="overviewFilterTargetMenu"></div>
+                                            </div>
+                                            <div class="filter-group dropdown">
+                                                <label class="filter-label"><i class="fas fa-filter fa-fw"></i>Filter</label>
+                                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle filter-dropdown-btn" type="button" id="overviewFilterFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">Select...</button>
+                                                <div class="dropdown-menu filter-checkbox-dropdown" id="overviewFilterFilterMenu"></div>
+                                            </div>
+                                            <div class="filter-group"><label class="filter-label"><i class="fas fa-eye-slash fa-fw"></i>Not assigned</label><select class="filter-select" id="overviewFilterHideNotAssigned"><option value="">Show</option><option value="hide">Hide</option></select></div>
+                                            <button type="button" class="filter-reset-btn" id="overviewFiltersReset" title="Reset filters"><i class="fas fa-times-circle"></i> Reset</button>
+                                        </div>
+                                    </div>
+                                    <div class="modern-table-body">
+                                        <div class="table-responsive">
+                                            <table class="table modern-table table-hover" id="allAssignmentsTable">
+                                                <thead><tr><th>Policy Name</th><th>Category</th><th>Target</th><th>Filter</th></tr></thead>
+                                                <tbody>
+ <tr><td>Win - Updates - D - WUFB Production ring</td><td>Device Configuration</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>M365 Baseline - Version Monitoring</td><td>Security Baselines</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Experience - D - Microsoft Edge</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Experience - D - Microsoft Edge - Extensions</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Experience - D - Office Apps</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Experience - D - OneDrive</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Experience - D - Platform SSO</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - Accounts &amp; Login</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - Defender Antivirus</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - Disk Encryption</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - Firewall &amp; Gatekeeper</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - Microsoft Edge</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - Password Policy</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - Screensaver</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Security - D - System Restrictions</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Updates - D - Defender Antivirus</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Updates - D - Microsoft Edge</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Updates - D - Office Apps</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MacOS - Updates - D - Software Update</td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MDE Baseline - Version Monitoring</td><td>Security Baselines</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>MS Edge Baseline - Version Monitoring</td><td>Security Baselines</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>W365 Security Baseline - Version Monitoring</td><td>Security Baselines</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>wdac test audit </td><td>Settings Catalog</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>Win - Access Control - D - LAPS</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Access Control - D - Local Security Policies</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Access Control - D - User Rights</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Apps - D - Microsoft Store</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Apps - U - Microsoft Store</td><td>Settings Catalog</td><td>SG - Intune - AUG - Users - Pilot Users</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - D - Google Chrome</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - D - OneDrive</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - D - Personalization</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - D - Windows Spotlight</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - U - Microsoft Accounts</td><td>Settings Catalog</td><td>SG - Intune - AUG - Users - Pilot Users</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - U - Microsoft Edge</td><td>Settings Catalog</td><td>SG - Intune - AUG - Users - Pilot Users</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - U - Office Apps</td><td>Settings Catalog</td><td>SG - Intune - AUG - Users - Pilot Users</td><td>No Filter</td></tr>
+ <tr><td>Win - Experience - U - OneDrive</td><td>Settings Catalog</td><td>SG - Intune - AUG - Users - Pilot Users</td><td>No Filter</td></tr>
+ <tr><td>Win - Monitoring - D - Telemetry</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Monitoring - D - WUFB Reports</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Network - D - Delivery Optimization</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Network - D - Firewall</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Network - D - Security</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Privacy - D - General</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Attack Surface Reduction rules</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Attack Surface Reduction rules 2</td><td>Settings Catalog</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Audit And Event Logging</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Audit Device Control</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Bitlocker</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Config Refresh</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Defender Antivirus</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Defender Antivirus Experience</td><td>Settings Catalog</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Defender Security Center</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Defender SmartScreen</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Device Guard, Memory Access, LSA, Virtual Based Technologies</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Device Login &amp; Lock</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Exploit Protection</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Google Chrome</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Google Chrome - Extensions</td><td>Settings Catalog</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Hardening</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Hardening 2</td><td>Settings Catalog</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Internet Explorer</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Local Admins</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - MDE Onboarding</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Microsoft Edge</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Microsoft Edge - Extensions</td><td>Settings Catalog</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Windows Hello For Business</td><td>Settings Catalog</td><td>SG - Intune - AUG - Users - Pilot Users</td><td>No Filter</td></tr>
+ <tr><td>Win - Security - D - Windows Hello For Business 2</td><td>Settings Catalog</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Updates - D - Defender Antivirus</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Updates - D - Microsoft Edge</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Updates - D - Office Apps</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Updates - D - Secure Boot Certificate</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - Updates - D - WUFB Behavior</td><td>Settings Catalog</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Windows Security Baseline - Version Monitoring</td><td>Security Baselines</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>Win - D - OS Version</td><td>Compliance Policies</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - D - System Security</td><td>Compliance Policies</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Win - D - Encryption</td><td>Compliance Policies</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>Windows - Cloud PCs (Exclude)</td></tr>
+ <tr><td>MacOS - D - Device Health</td><td>Compliance Policies</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>MacOS - D - OS Version</td><td>Compliance Policies</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>MacOS - D - System Security</td><td>Compliance Policies</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>MacOS - D - Encryption</td><td>Compliance Policies</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>MacOS - D - Gatekeeper</td><td>Compliance Policies</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>Win - D - Defender for Endpoint</td><td>Compliance Policies</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Android - Security - U - MAM -1</td><td>App Protection</td><td>SG - Entra - DUG - All Internal Users</td><td>Android - Unmanaged devices (Include)</td></tr>
+ <tr><td>Android - Security - U - MAM - 2</td><td>App Protection</td><td>SG - Entra - DUG - All Internal Users</td><td>Android - Unmanaged devices (Include)</td></tr>
+ <tr><td>Android - Security - U - MAM -3 </td><td>App Protection</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>IOS - Security - U - MAM -1</td><td>App Protection</td><td>SG - Entra - DUG - All Internal Users</td><td>IOS - Unmanaged devices  (Include)</td></tr>
+ <tr><td>IOS - Security - U - MAM -2</td><td>App Protection</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>IOS - Security - U - MAM -3</td><td>App Protection</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>Company Portal</td><td>Applications</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Microsoft 365 Apps for Windows 10 and later</td><td>Applications</td><td>All Devices</td><td>Windows - Cloud PCs (Exclude)</td></tr>
+ <tr><td>Microsoft Intune Company Portal</td><td>Applications</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>Restart stopped Office C2R svc</td><td>Remediation Scripts</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>Update stale Group Policies</td><td>Remediation Scripts</td><td>Not Assigned</td><td>No Filter</td></tr>
+ <tr><td>Autopilot Profile for All Devices</td><td>Autopilot Profiles</td><td>SG - Intune - ADG - Devices - Pilot Devices</td><td>No Filter</td></tr>
+ <tr><td>Shared Devices</td><td>Autopilot Profiles</td><td>SG - Intune - DDG - Shared Autopilot Devices</td><td>No Filter</td></tr>
+ <tr><td>All users and all devices</td><td>ESP Profiles</td><td>All Devices</td><td>No Filter</td></tr>
+ <tr><td>Inforcer Windows 365 Provisioning Policy</td><td>Cloud PC Provisioning</td><td>SG - Entra - AUG - License - Windows 365 Cloud PC Users</td><td>No Filter</td></tr>
+ <tr><td>Inforcer - User Settings</td><td>Cloud PC User Settings</td><td>SG - Entra - AUG - License - Windows 365 Cloud PC Users</td><td>No Filter</td></tr>
+
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+<div class="row"><div class="col-12"><div class="modern-table-container"><div class="modern-table-header"><div style="display: flex; justify-content: space-between; align-items: center; width: 100%;"><div><h5><i class="fas fa-filter me-2"></i>Intune Assignment Filters</h5><small>Filter usage statistics with actual filtering syntax</small></div><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="showAllFilters"><label class="form-check-label" for="showAllFilters">Show All Results</label></div></div></div><div class="modern-table-body"><div class="table-responsive"><table class="table modern-table table-hover" id="filtersTable"><thead><tr><th>Filter Name</th><th>Filter Rule/Syntax</th><th>Platform</th><th>Usage Count</th></tr></thead><tbody> <tr><td><strong>Android - Unmanaged devices</strong></td><td><code style="font-size: 0.85em; word-break: break-all;">(app.deviceManagementType -eq &quot;Unmanaged&quot;)</code></td><td><span class="badge bg-secondary">Android</span></td><td><span class="badge bg-primary">2</span></td></tr>
+ <tr><td><strong>Windows - Cloud PCs</strong></td><td><code style="font-size: 0.85em; word-break: break-all;">(device.model -startsWith &quot;Cloud PC&quot;)</code></td><td><span class="badge bg-secondary">Windows</span></td><td><span class="badge bg-primary">2</span></td></tr>
+ <tr><td><strong>IOS - Unmanaged devices </strong></td><td><code style="font-size: 0.85em; word-break: break-all;">(app.deviceManagementType -eq &quot;Unmanaged&quot;)</code></td><td><span class="badge bg-secondary">iOS/iPadOS</span></td><td><span class="badge bg-primary">1</span></td></tr>
+</tbody></table></div></div></div></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <footer>
+        <div class="footer-content">
+            <div class="footer-info">
+                <div class="footer-brand">RK Solutions</div>
+                <p class="footer-description">Helping IT professionals with Microsoft 365 and Intune reporting tools and insights</p>
+            </div>
+            <div class="footer-center">
+                <div class="footer-logo">RK</div>
+                <p class="footer-tagline">Practical IT Solutions & Insights</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-social">
+                    <a href="https://rksolutions.nl" title="Visit RK Solutions Blog" target="_blank">🌐</a>
+                    <a href="https://github.com/royklo" title="GitHub" target="_blank">🔗</a>
+                    <a href="https://linkedin.com/in/roy-klooster" title="LinkedIn" target="_blank">💼</a>
+                </div>
+                <p class="footer-copyright">© 2025 Roy Klooster - RK Solutions</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p class="footer-copyright">Generated on 2026-03-07 14:59:32</p>
+            <p class="footer-tech-stack">
+                <span class="tech-badge">PowerShell</span>
+                <span class="tech-badge">Microsoft Graph</span>
+                <span class="tech-badge">Intune</span>
+                <span class="tech-badge">HTML5</span>
+            </p>
+        </div>
+    </footer>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var themeToggle = document.getElementById('themeToggle');
+            var prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+            var savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark' || (!savedTheme && prefersDarkScheme.matches)) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                if (themeToggle) themeToggle.checked = true;
+            }
+            if (themeToggle) themeToggle.addEventListener('change', function() {
+                document.documentElement.setAttribute('data-theme', this.checked ? 'dark' : 'light');
+                localStorage.setItem('theme', this.checked ? 'dark' : 'light');
+            });
+            if (jQuery && jQuery.fn.DataTable && jQuery('#allAssignmentsTable').length > 0) {
+                var assignmentsTable = jQuery('#allAssignmentsTable').DataTable({
+                    responsive: true, pageLength: 25, order: [[1, 'asc'], [0, 'asc']],
+                    dom: 'Bfrtip', buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
+                    columnDefs: [
+                        { targets: [2], className: 'text-center' },
+                        { targets: 0, width: '25%' }, { targets: 1, width: '15%' }, { targets: 2, width: '15%' }, { targets: 3, width: '20%' }
+                    ],
+                    initComplete: function() {
+                        var api = this.api();
+                        function escOv(v) { return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+                        function getOvChecked(menuId){ return jQuery('#'+menuId+' input.filter-cb:checked').map(function(){ return jQuery(this).attr('data-value'); }).get(); }
+                        function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; jQuery('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
+                        function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$/i, '').trim() || s; }
+                        function fillOvDropdown(menuId, btnId, colIdx, label, valueNormalizer) {
+                            var menu = jQuery('#'+menuId); if (!menu.length) return; menu.empty();
+                            var rawVals = api.column(colIdx).data().toArray().filter(Boolean);
+                            var vals = valueNormalizer ? rawVals.map(function(v){ return valueNormalizer(v); }) : rawVals;
+                            var uniq = []; jQuery.each(vals, function(i,v){ if (jQuery.inArray(v, uniq) === -1) uniq.push(v); }); uniq.sort();
+                            jQuery.each(uniq, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
+                            menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
+                            menu.on('click', function(e){ e.stopPropagation(); });
+                            updateOvBtn(btnId, menuId, label);
+                        }
+                        fillOvDropdown('overviewFilterCategoryMenu','overviewFilterCategoryBtn', 1, 'Category');
+                        fillOvDropdown('overviewFilterTargetMenu','overviewFilterTargetBtn', 2, 'Target');
+                        fillOvDropdown('overviewFilterFilterMenu','overviewFilterFilterBtn', 3, 'Filter', normalizeFilterName);
+                        var overviewSearchFn = function(settings, data, dataIndex) {
+                            if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
+                            if (jQuery('#overviewFilterHideNotAssigned').length && jQuery('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
+                            var c = getOvChecked('overviewFilterCategoryMenu'); if (c.length && jQuery.inArray(data[1], c) === -1) return false;
+                            var t = getOvChecked('overviewFilterTargetMenu'); if (t.length && jQuery.inArray(data[2], t) === -1) return false;
+                            var rowFilterNorm = normalizeFilterName(data[3]); var f = getOvChecked('overviewFilterFilterMenu'); if (f.length && jQuery.inArray(rowFilterNorm, f) === -1) return false;
+                            return true;
+                        };
+                        jQuery.fn.dataTable.ext.search.push(overviewSearchFn);
+                        var hideNotAssigned = jQuery('#overviewFilterHideNotAssigned');
+                        if (hideNotAssigned.length) hideNotAssigned.on('change', function(){ api.draw(); });
+                        var resetBtn = jQuery('#overviewFiltersReset');
+                        if (resetBtn.length) resetBtn.on('click', function(){
+                            jQuery('#overviewFilterCategoryMenu,#overviewFilterTargetMenu,#overviewFilterFilterMenu').find('input.filter-cb').prop('checked', false);
+                            updateOvBtn('overviewFilterCategoryBtn','overviewFilterCategoryMenu','Category'); updateOvBtn('overviewFilterTargetBtn','overviewFilterTargetMenu','Target'); updateOvBtn('overviewFilterFilterBtn','overviewFilterFilterMenu','Filter');
+                            hideNotAssigned.val('');
+                            api.draw();
+                        });
+                    }
+                });
+                jQuery('#showAllAssignments').prop('checked', false);
+                jQuery('#showAllAssignments').on('change', function() {
+                    var isShowAll = this.checked;
+                    var paginateControls = jQuery('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+                    if (isShowAll) { assignmentsTable.page.len(-1); paginateControls.hide(); }
+                    else { assignmentsTable.page.len(25); paginateControls.show(); }
+                    assignmentsTable.draw();
+                });
+            }
+            if (jQuery && jQuery.fn.DataTable && jQuery('#filtersTable').length > 0) {
+                var filtersTable = jQuery('#filtersTable').DataTable({
+                    responsive: true, pageLength: 10, order: [[3, 'desc']],
+                    dom: 'Bfrtip', buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
+                    columnDefs: [
+                        { targets: [3, 4], className: 'text-center' },
+                        { targets: 0, width: '20%' }, { targets: 1, width: '40%' }, { targets: 2, width: '15%' },
+                        { targets: 3, width: '15%' }, { targets: 4, width: '10%' }
+                    ]
+                });
+                jQuery('#showAllFilters').prop('checked', false);
+                jQuery('#showAllFilters').on('change', function() {
+                    var isShowAll = this.checked;
+                    var paginateControls = jQuery('#filtersTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+                    if (isShowAll) { filtersTable.page.len(-1); paginateControls.hide(); }
+                    else { filtersTable.page.len(10); paginateControls.show(); }
+                    filtersTable.draw();
+                });
+            }
+        }
+    </script>
+</body>
+</html>

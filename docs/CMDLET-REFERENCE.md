@@ -1,0 +1,116 @@
+# Cmdlet Reference
+
+Summary of exported cmdlets and main parameters. Run `Get-Help <CmdletName> -Full` for full help.
+
+## Connect-RKGraph
+
+Establishes a Microsoft Graph session for use with RKSolutions report cmdlets.
+
+| Parameter | Description |
+|-----------|-------------|
+| **RequiredScopes** | API permission scopes. Default includes scopes needed for all report cmdlets. |
+| **TenantId** | Tenant ID (optional for interactive; required for ClientSecret, Certificate, Identity, AccessToken). |
+| **ClientId** | App (client) ID for client secret or certificate auth. |
+| **ClientSecret** | Client secret (optional for interactive). |
+| **CertificateThumbprint** | Certificate thumbprint for certificate auth. |
+| **Identity** | Use managed identity. |
+| **AccessToken** | Use an access token. |
+| **DebugMode** | Enable debug output. |
+
+**Example:** `Connect-RKGraph` (interactive); or `Connect-RKGraph -TenantId '...' -ClientId '...' -ClientSecret (ConvertTo-SecureString '...' -AsPlainText -Force)`.
+
+---
+
+## Disconnect-RKGraph
+
+Disconnects from Microsoft Graph and clears the session.
+
+**Example:** `Disconnect-RKGraph`
+
+---
+
+## Get-IntuneEnrollmentFlowsReport
+
+Generates Intune assignment overview and/or device visualization report (HTML/CSV).
+
+| Parameter | Description |
+|-----------|-------------|
+| **AssignmentOverviewOnly** | Run assignment collection only (no device). |
+| **Device** | Device display name, Intune device ID, or Entra device object ID for visualization. |
+| **OutputPath** | Output file path. |
+| **ExportToCsv** | Also export CSV. |
+| **ExportFolder** | Folder for exports. |
+| **RequiredScopes**, **TenantId**, **ClientId**, etc. | Auth parameters when not using Connect-RKGraph. |
+
+**Example:** `Get-IntuneEnrollmentFlowsReport -AssignmentOverviewOnly`
+
+---
+
+## Get-IntuneAnomaliesReport
+
+Generates Intune anomalies report.
+
+| Parameter | Description |
+|-----------|-------------|
+| **OutputPath** | Output file path. |
+| **ExportToCsv** | Also export CSV. |
+| **ExportFolder** | Folder for exports. |
+| Auth parameters | As for other report cmdlets when not using Connect-RKGraph. |
+
+**Example:** `Get-IntuneAnomaliesReport`
+
+---
+
+## Get-EntraAdminRolesReport
+
+Generates Entra admin roles report.
+
+| Parameter | Description |
+|-----------|-------------|
+| **OutputPath** | Output file path. |
+| **ExportToCsv** | Also export CSV. |
+| **ExportFolder** | Folder for exports. |
+| Auth parameters | As for other report cmdlets when not using Connect-RKGraph. |
+
+**Example:** `Get-EntraAdminRolesReport`
+
+---
+
+## Get-M365LicenseAssignmentReport
+
+Generates M365 license assignment report.
+
+| Parameter | Description |
+|-----------|-------------|
+| **OutputPath** | Output file path. |
+| **ExportToCsv** | Also export CSV. |
+| **ExportFolder** | Folder for exports. |
+| Auth parameters | As for other report cmdlets when not using Connect-RKGraph. |
+
+**Example:** `Get-M365LicenseAssignmentReport`
+
+---
+
+## Get-DeviceEvaluationContext
+
+Returns device evaluation context (used internally by enrollment flows report; also exported).
+
+| Parameter | Description |
+|-----------|-------------|
+| **DeviceNameOrId** | Device display name or ID. |
+| **DebugMode** | Enable debug output. |
+
+---
+
+## Get-CloudPCProvisioningPolicyGroupInfo
+
+Returns Cloud PC provisioning policy group info (used internally; also exported).
+
+| Parameter | Description |
+|-----------|-------------|
+| **PolicyName** | Policy name. |
+| **PolicyId** | Policy ID. |
+
+---
+
+For full parameter sets and examples, run `Get-Help <CmdletName> -Full` in PowerShell.
