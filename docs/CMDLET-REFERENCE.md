@@ -43,7 +43,9 @@ Generates Intune assignment overview and/or device visualization report (HTML/CS
 | **OutputPath**                                       | Output file path.                                                                   |
 | **ExportToCsv**                                      | Also export CSV.                                                                    |
 | **ExportFolder**                                     | Folder for exports.                                                                 |
-| **RequiredScopes**, **TenantId**, **ClientId**, etc. | Auth parameters when not using Connect-RKGraph.                                     |
+| **DebugMode**                                        | Enable debug output.                                                                |
+
+Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 
 
 **Example:** `Get-IntuneEnrollmentFlowsReport -AssignmentOverviewOnly`
@@ -55,12 +57,15 @@ Generates Intune assignment overview and/or device visualization report (HTML/CS
 Generates Intune anomalies report.
 
 
-| Parameter        | Description                                                 |
-| ---------------- | ----------------------------------------------------------- |
-| **OutputPath**   | Output file path.                                           |
-| **ExportToCsv**  | Also export CSV.                                            |
-| **ExportFolder** | Folder for exports.                                         |
-| Auth parameters  | As for other report cmdlets when not using Connect-RKGraph. |
+| Parameter    | Description                    |
+| ------------ | ------------------------------ |
+| **SendEmail** | Send report by email.          |
+| **Recipient** | Email recipient(s).            |
+| **From**      | From address.                  |
+| **ExportPath** | Output file path.            |
+| **DebugMode** | Enable debug output.          |
+
+Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 
 
 **Example:** `Get-IntuneAnomaliesReport`
@@ -72,12 +77,15 @@ Generates Intune anomalies report.
 Generates Entra admin roles report.
 
 
-| Parameter        | Description                                                 |
-| ---------------- | ----------------------------------------------------------- |
-| **OutputPath**   | Output file path.                                           |
-| **ExportToCsv**  | Also export CSV.                                            |
-| **ExportFolder** | Folder for exports.                                         |
-| Auth parameters  | As for other report cmdlets when not using Connect-RKGraph. |
+| Parameter    | Description                    |
+| ------------ | ------------------------------ |
+| **SendEmail** | Send report by email.          |
+| **Recipient** | Email recipient(s).            |
+| **From**      | From address.                  |
+| **ExportPath** | Output file path.            |
+| **DebugMode** | Enable debug output.          |
+
+Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 
 
 **Example:** `Get-EntraAdminRolesReport`
@@ -89,12 +97,15 @@ Generates Entra admin roles report.
 Generates M365 license assignment report.
 
 
-| Parameter        | Description                                                 |
-| ---------------- | ----------------------------------------------------------- |
-| **OutputPath**   | Output file path.                                           |
-| **ExportToCsv**  | Also export CSV.                                            |
-| **ExportFolder** | Folder for exports.                                         |
-| Auth parameters  | As for other report cmdlets when not using Connect-RKGraph. |
+| Parameter    | Description                    |
+| ------------ | ------------------------------ |
+| **SendEmail** | Send report by email.          |
+| **Recipient** | Email recipient(s).            |
+| **From**      | From address.                  |
+| **ExportPath** | Output file path.            |
+| **DebugMode** | Enable debug output.          |
+
+Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 
 
 **Example:** `Get-M365LicenseAssignmentReport`

@@ -1278,8 +1278,11 @@ function Test-AssignmentMatchesDevicePlatform {
 
 function ConvertTo-DevicePropertiesForFilter {
     param([Parameter(Mandatory)][object]$RawDevice)
+    $azureAdDeviceId = $null
+    if ($RawDevice.PSObject.Properties['azureAdDeviceId']) { $azureAdDeviceId = $RawDevice.azureAdDeviceId }
+    if ($null -eq $azureAdDeviceId -and $RawDevice.PSObject.Properties['AzureAdDeviceId']) { $azureAdDeviceId = $RawDevice.AzureAdDeviceId }
     [PSCustomObject]@{
-        Id = $RawDevice.id; DeviceName = $RawDevice.deviceName; UserPrincipalName = $RawDevice.userPrincipalName; AzureAdDeviceId = $RawDevice.azureAdDeviceId
+        Id = $RawDevice.id; DeviceName = $RawDevice.deviceName; UserPrincipalName = $RawDevice.userPrincipalName; AzureAdDeviceId = $azureAdDeviceId
         OperatingSystem = $RawDevice.operatingSystem; OSVersion = $RawDevice.osVersion; DeviceType = $RawDevice.deviceType; ComplianceState = $RawDevice.complianceState
         JoinType = $RawDevice.joinType; ManagementAgent = $RawDevice.managementAgent; OwnerType = $RawDevice.ownerType; EnrollmentProfileName = $RawDevice.enrollmentProfileName
         AutopilotEnrolled = $RawDevice.autopilotEnrolled; Manufacturer = $RawDevice.manufacturer; Model = $RawDevice.model; SerialNumber = $RawDevice.serialNumber
@@ -1363,6 +1366,22 @@ function Get-DeviceEvaluationContext {
             }
         }
         catch { if ($DebugMode) { Write-Warning "Device groups: $($_.Exception.Message)" } }
+    }
+    # Fallback: when AzureAdDeviceId is missing, try Entra object ID (AzureActiveDirectoryDeviceId) to resolve device group membership
+    if (($deviceGroupIds.Count -eq 0) -and $rawDevice) {
+        $entraObjId = $null
+        if ($rawDevice.PSObject.Properties['azureActiveDirectoryDeviceId']) { $entraObjId = $rawDevice.azureActiveDirectoryDeviceId }
+        elseif ($rawDevice.PSObject.Properties['AzureActiveDirectoryDeviceId']) { $entraObjId = $rawDevice.AzureActiveDirectoryDeviceId }
+        if ($entraObjId -and [string]$entraObjId -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
+            try {
+                $deviceGroupsData = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/v1.0/devices/$entraObjId/transitiveMemberOf?`$select=id" -Method GET
+                $deviceGroupIds = @($deviceGroupsData | Select-Object -ExpandProperty id)
+                $deviceDirectData = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/v1.0/devices/$entraObjId/memberOf?`$select=id" -Method GET
+                $deviceDirectGroupIds = @($deviceDirectData | Select-Object -ExpandProperty id)
+                if (-not $entraDeviceObjectId) { $entraDeviceObjectId = $entraObjId }
+            }
+            catch { if ($DebugMode) { Write-Warning "Device groups (fallback by AAD device id): $($_.Exception.Message)" } }
+        }
     }
     [PSCustomObject]@{
         ManagedDeviceId = $deviceId; EntraDeviceObjectId = $entraDeviceObjectId; DeviceProperties = $deviceProperties; UserGroupIds = $userGroupIds; UserDirectGroupIds = $userDirectGroupIds; DeviceGroupIds = $deviceGroupIds; DeviceDirectGroupIds = $deviceDirectGroupIds; RawDevice = $rawDevice
@@ -1452,7 +1471,9 @@ function ConvertTo-CanonicalAssignment {
 
 function Test-AssignmentAppliesToDevice {
     param([Parameter(Mandatory)][PSCustomObject]$CanonicalAssignment, [Parameter(Mandatory)][PSCustomObject]$DeviceContext, [array]$Filters)
-    $dp = $DeviceContext.DeviceProperties; $userGroupIds = $DeviceContext.UserGroupIds; $deviceGroupIds = $DeviceContext.DeviceGroupIds
+    $dp = $DeviceContext.DeviceProperties
+    $userGroupIds = if ($DeviceContext.UserGroupIds) { @($DeviceContext.UserGroupIds) } else { @() }
+    $deviceGroupIds = if ($DeviceContext.DeviceGroupIds) { @($DeviceContext.DeviceGroupIds) } else { @() }
     $targetType = $CanonicalAssignment.TargetType; $filterId = $CanonicalAssignment.FilterId; $filterType = $CanonicalAssignment.FilterType
     $baseApplicable = $false
     if ($targetType -eq "#microsoft.graph.allDevicesAssignmentTarget") {
@@ -1464,11 +1485,17 @@ function Test-AssignmentAppliesToDevice {
     }
     elseif ($targetType -eq "#microsoft.graph.groupAssignmentTarget") {
         $groupId = $CanonicalAssignment.GroupId
-        $baseApplicable = ($userGroupIds -contains $groupId) -or ($deviceGroupIds -contains $groupId)
+        $groupIdStr = [string]$groupId
+        if ($groupIdStr.Trim().Length -gt 0) {
+            $baseApplicable = ($deviceGroupIds | Where-Object { [string]$_ -eq $groupIdStr }).Count -gt 0 -or ($userGroupIds | Where-Object { [string]$_ -eq $groupIdStr }).Count -gt 0
+        }
     }
     elseif ($targetType -eq "#microsoft.graph.exclusionGroupAssignmentTarget") {
         $groupId = $CanonicalAssignment.GroupId
-        $baseApplicable = ($userGroupIds -contains $groupId) -or ($deviceGroupIds -contains $groupId)
+        $groupIdStr = [string]$groupId
+        if ($groupIdStr.Trim().Length -gt 0) {
+            $baseApplicable = ($deviceGroupIds | Where-Object { [string]$_ -eq $groupIdStr }).Count -gt 0 -or ($userGroupIds | Where-Object { [string]$_ -eq $groupIdStr }).Count -gt 0
+        }
     }
     $filterResult = 'N/A'; $applies = $baseApplicable
     $hasRealFilter = $filterId -and $filterId -ne "00000000-0000-0000-0000-000000000000" -and $filterType -and $filterType -ne "none"
@@ -1697,6 +1724,118 @@ __PH_FILTERS__
 function New-AssignmentOverviewHtmlReport {
     param([Parameter(Mandatory)][array]$PolicyAssignments, [string]$TenantName = "Intune Tenant", [Parameter(Mandatory)][string]$OutputPath)
     $fragment = Get-AssignmentOverviewTabFragment -PolicyAssignments $PolicyAssignments -TenantName $TenantName
+    # Script in literal here-string so $ in JavaScript are not expanded by PowerShell (same approach as device report).
+    $assignmentOverviewScript = @'
+document.addEventListener('DOMContentLoaded', function() {
+  var themeToggle = document.getElementById('themeToggle');
+  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme(isDark) {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    if (themeToggle) themeToggle.checked = isDark;
+  }
+  var saved = localStorage.getItem('theme');
+  if (saved === 'dark' || saved === 'light') {
+    applyTheme(saved === 'dark');
+  } else {
+    applyTheme(prefersDark.matches);
+  }
+  if (themeToggle) themeToggle.addEventListener('change', function() {
+    var isDark = this.checked;
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  });
+  prefersDark.addEventListener('change', function(e) {
+    if (localStorage.getItem('theme') === null) {
+      applyTheme(e.matches);
+    }
+  });
+  if (jQuery && jQuery.fn.DataTable && jQuery('#allAssignmentsTable').length > 0) {
+    var $allTbl = jQuery('#allAssignmentsTable');
+    var preCategories = [], preTargets = [], preFilters = [];
+    function normFilter(s) { return String(s||'').replace(/\s*\((?:Include|Exclude)$/i, '').trim() || String(s||''); }
+    $allTbl.find('tbody tr').each(function() {
+      var $row = jQuery(this);
+      var $cells = $row.find('td');
+      if ($cells.length >= 4) {
+        var c = jQuery.trim($cells.eq(1).text()); if (c && preCategories.indexOf(c) === -1) preCategories.push(c);
+        var t = jQuery.trim($cells.eq(2).text()); if (t && preTargets.indexOf(t) === -1) preTargets.push(t);
+        var f = normFilter(jQuery.trim($cells.eq(3).text())); if (f && preFilters.indexOf(f) === -1) preFilters.push(f);
+      }
+    });
+    preCategories.sort(); preTargets.sort(); preFilters.sort();
+    var at = $allTbl.DataTable({
+      responsive: true, pageLength: 25, order: [[1,'asc'],[0,'asc']], dom: 'Bfrtip', buttons: ['copy','csv','excel','pdf','print'],
+      columnDefs: [
+        { targets: [2], className: 'text-center' },
+        { targets: 0, width: '25%' }, { targets: 1, width: '15%' }, { targets: 2, width: '15%' }, { targets: 3, width: '20%' }
+      ],
+      initComplete: function() {
+        var api = this.api();
+        function escOv(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function getOvChecked(menuId){ return jQuery('#'+menuId+' input.filter-cb:checked').map(function(){ return jQuery(this).attr('data-value'); }).get(); }
+        function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; jQuery('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
+        function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$/i, '').trim() || s; }
+        function fillOvDropdownFromArray(menuId, btnId, values, label) {
+          var menu = jQuery('#'+menuId); if (!menu.length) return; menu.empty();
+          jQuery.each(values, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
+          menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
+          menu.on('click', function(e){ e.stopPropagation(); });
+          updateOvBtn(btnId, menuId, label);
+        }
+        fillOvDropdownFromArray('overviewFilterCategoryMenu','overviewFilterCategoryBtn', preCategories, 'Category');
+        fillOvDropdownFromArray('overviewFilterTargetMenu','overviewFilterTargetBtn', preTargets, 'Target');
+        fillOvDropdownFromArray('overviewFilterFilterMenu','overviewFilterFilterBtn', preFilters, 'Filter');
+        var overviewSearchFn = function(settings, data, dataIndex) {
+          if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
+          if (jQuery('#overviewFilterHideNotAssigned').length && jQuery('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
+          var searchStr = ''; try { var searchApi = new jQuery.fn.dataTable.Api(settings); searchStr = (searchApi.search() || '').trim(); } catch (e) {}
+          if (searchStr && data[0] && data[0].toString().toLowerCase().indexOf(searchStr.toLowerCase()) === -1) return false;
+          var c = getOvChecked('overviewFilterCategoryMenu'); if (c.length && jQuery.inArray(data[1], c) === -1) return false;
+          var t = getOvChecked('overviewFilterTargetMenu'); if (t.length && jQuery.inArray(data[2], t) === -1) return false;
+          var rowFilterNorm = normalizeFilterName(data[3]); var f = getOvChecked('overviewFilterFilterMenu'); if (f.length && jQuery.inArray(rowFilterNorm, f) === -1) return false;
+          return true;
+        };
+        jQuery.fn.dataTable.ext.search.push(overviewSearchFn);
+        var hideNotAssigned = jQuery('#overviewFilterHideNotAssigned');
+        if (hideNotAssigned.length) hideNotAssigned.on('change', function(){ api.draw(); });
+        var resetBtn = jQuery('#overviewFiltersReset');
+        if (resetBtn.length) resetBtn.on('click', function(){
+          jQuery('#overviewFilterCategoryMenu,#overviewFilterTargetMenu,#overviewFilterFilterMenu').find('input.filter-cb').prop('checked', false);
+          updateOvBtn('overviewFilterCategoryBtn','overviewFilterCategoryMenu','Category'); updateOvBtn('overviewFilterTargetBtn','overviewFilterTargetMenu','Target'); updateOvBtn('overviewFilterFilterBtn','overviewFilterFilterMenu','Filter');
+          hideNotAssigned.val('');
+          api.draw();
+        });
+      }
+    });
+    jQuery('#showAllAssignments').prop('checked', false);
+    jQuery('#showAllAssignments').on('change', function() {
+      var dt = jQuery('#allAssignmentsTable').DataTable();
+      var paginateControls = jQuery('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+      if (this.checked) { dt.page.len(-1); paginateControls.hide(); } else { dt.page.len(25); paginateControls.show(); }
+      dt.draw();
+    });
+  }
+  if (jQuery && jQuery.fn.DataTable && jQuery('#filtersTable').length > 0) {
+    var filtersTable = jQuery('#filtersTable').DataTable({
+      responsive: true, pageLength: 10, order: [[3, 'desc']],
+      dom: 'Bfrtip', buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
+      columnDefs: [
+        { targets: [3], className: 'text-center' },
+        { targets: 0, width: '20%' }, { targets: 1, width: '40%' }, { targets: 2, width: '15%' },
+        { targets: 3, width: '25%' }
+      ]
+    });
+    jQuery('#showAllFilters').prop('checked', false);
+    jQuery('#showAllFilters').on('change', function() {
+      var isShowAll = this.checked;
+      var paginateControls = jQuery('#filtersTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+      if (isShowAll) { filtersTable.page.len(-1); paginateControls.hide(); }
+      else { filtersTable.page.len(10); paginateControls.show(); }
+      filtersTable.draw();
+    });
+  }
+});
+'@
     $html = @"
 <!DOCTYPE html>
 <html lang=`"en`">
@@ -1891,94 +2030,7 @@ $fragment
         </div>
     </footer>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var themeToggle = document.getElementById('themeToggle');
-            var prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-            var savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'dark' || (!savedTheme && prefersDarkScheme.matches)) {
-                document.documentElement.setAttribute('data-theme', 'dark');
-                if (themeToggle) themeToggle.checked = true;
-            }
-            if (themeToggle) themeToggle.addEventListener('change', function() {
-                document.documentElement.setAttribute('data-theme', this.checked ? 'dark' : 'light');
-                localStorage.setItem('theme', this.checked ? 'dark' : 'light');
-            });
-            if (jQuery && jQuery.fn.DataTable && jQuery('#allAssignmentsTable').length > 0) {
-                var assignmentsTable = jQuery('#allAssignmentsTable').DataTable({
-                    responsive: true, pageLength: 25, order: [[1, 'asc'], [0, 'asc']],
-                    dom: 'Bfrtip', buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
-                    columnDefs: [
-                        { targets: [2], className: 'text-center' },
-                        { targets: 0, width: '25%' }, { targets: 1, width: '15%' }, { targets: 2, width: '15%' }, { targets: 3, width: '20%' }
-                    ],
-                    initComplete: function() {
-                        var api = this.api();
-                        function escOv(v) { return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-                        function getOvChecked(menuId){ return jQuery('#'+menuId+' input.filter-cb:checked').map(function(){ return jQuery(this).attr('data-value'); }).get(); }
-                        function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; jQuery('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
-                        function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$/i, '').trim() || s; }
-                        function fillOvDropdown(menuId, btnId, colIdx, label, valueNormalizer) {
-                            var menu = jQuery('#'+menuId); if (!menu.length) return; menu.empty();
-                            var rawVals = api.column(colIdx).data().toArray().filter(Boolean);
-                            var vals = valueNormalizer ? rawVals.map(function(v){ return valueNormalizer(v); }) : rawVals;
-                            var uniq = []; jQuery.each(vals, function(i,v){ if (jQuery.inArray(v, uniq) === -1) uniq.push(v); }); uniq.sort();
-                            jQuery.each(uniq, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
-                            menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
-                            menu.on('click', function(e){ e.stopPropagation(); });
-                            updateOvBtn(btnId, menuId, label);
-                        }
-                        fillOvDropdown('overviewFilterCategoryMenu','overviewFilterCategoryBtn', 1, 'Category');
-                        fillOvDropdown('overviewFilterTargetMenu','overviewFilterTargetBtn', 2, 'Target');
-                        fillOvDropdown('overviewFilterFilterMenu','overviewFilterFilterBtn', 3, 'Filter', normalizeFilterName);
-                        var overviewSearchFn = function(settings, data, dataIndex) {
-                            if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
-                            if (jQuery('#overviewFilterHideNotAssigned').length && jQuery('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
-                            var c = getOvChecked('overviewFilterCategoryMenu'); if (c.length && jQuery.inArray(data[1], c) === -1) return false;
-                            var t = getOvChecked('overviewFilterTargetMenu'); if (t.length && jQuery.inArray(data[2], t) === -1) return false;
-                            var rowFilterNorm = normalizeFilterName(data[3]); var f = getOvChecked('overviewFilterFilterMenu'); if (f.length && jQuery.inArray(rowFilterNorm, f) === -1) return false;
-                            return true;
-                        };
-                        jQuery.fn.dataTable.ext.search.push(overviewSearchFn);
-                        var hideNotAssigned = jQuery('#overviewFilterHideNotAssigned');
-                        if (hideNotAssigned.length) hideNotAssigned.on('change', function(){ api.draw(); });
-                        var resetBtn = jQuery('#overviewFiltersReset');
-                        if (resetBtn.length) resetBtn.on('click', function(){
-                            jQuery('#overviewFilterCategoryMenu,#overviewFilterTargetMenu,#overviewFilterFilterMenu').find('input.filter-cb').prop('checked', false);
-                            updateOvBtn('overviewFilterCategoryBtn','overviewFilterCategoryMenu','Category'); updateOvBtn('overviewFilterTargetBtn','overviewFilterTargetMenu','Target'); updateOvBtn('overviewFilterFilterBtn','overviewFilterFilterMenu','Filter');
-                            hideNotAssigned.val('');
-                            api.draw();
-                        });
-                    }
-                });
-                jQuery('#showAllAssignments').prop('checked', false);
-                jQuery('#showAllAssignments').on('change', function() {
-                    var isShowAll = this.checked;
-                    var paginateControls = jQuery('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
-                    if (isShowAll) { assignmentsTable.page.len(-1); paginateControls.hide(); }
-                    else { assignmentsTable.page.len(25); paginateControls.show(); }
-                    assignmentsTable.draw();
-                });
-            }
-            if (jQuery && jQuery.fn.DataTable && jQuery('#filtersTable').length > 0) {
-                var filtersTable = jQuery('#filtersTable').DataTable({
-                    responsive: true, pageLength: 10, order: [[3, 'desc']],
-                    dom: 'Bfrtip', buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
-                    columnDefs: [
-                        { targets: [3, 4], className: 'text-center' },
-                        { targets: 0, width: '20%' }, { targets: 1, width: '40%' }, { targets: 2, width: '15%' },
-                        { targets: 3, width: '15%' }, { targets: 4, width: '10%' }
-                    ]
-                });
-                jQuery('#showAllFilters').prop('checked', false);
-                jQuery('#showAllFilters').on('change', function() {
-                    var isShowAll = this.checked;
-                    var paginateControls = jQuery('#filtersTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
-                    if (isShowAll) { filtersTable.page.len(-1); paginateControls.hide(); }
-                    else { filtersTable.page.len(10); paginateControls.show(); }
-                    filtersTable.draw();
-                });
-            }
-        }
+$assignmentOverviewScript
     </script>
 </body>
 </html>
@@ -2698,7 +2750,7 @@ $cloudPCUserSettingsConfigSection
     $parts += '<div class="flow-arrow" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>'
     $parts += Write-FlowStepTwoCol "flow-config" "Configuration Profiles" "fa-cogs" $configDevicePolicies $configUserPolicies $EvaluatedAssignments
     $parts += '<div class="flow-arrow" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>'
-    if (-not $IsCloudPC) {
+    if ($IsCloudPC) {
         $parts += $cloudPCUserSettingsStepHtml
         $parts += '<div class="flow-arrow" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>'
         $parts += $cloudPCStepHtml
@@ -3145,7 +3197,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   if (jQuery && jQuery.fn.DataTable && jQuery('#allAssignmentsTable').length > 0) {
-    var at = jQuery('#allAssignmentsTable').DataTable({
+    var $allTbl = jQuery('#allAssignmentsTable');
+    var preCategories = [], preTargets = [], preFilters = [];
+    function normFilter(s) { return String(s||'').replace(/\s*\((?:Include|Exclude)$/i, '').trim() || String(s||''); }
+    $allTbl.find('tbody tr').each(function() {
+      var $row = jQuery(this);
+      var $cells = $row.find('td');
+      if ($cells.length >= 4) {
+        var c = jQuery.trim($cells.eq(1).text()); if (c && preCategories.indexOf(c) === -1) preCategories.push(c);
+        var t = jQuery.trim($cells.eq(2).text()); if (t && preTargets.indexOf(t) === -1) preTargets.push(t);
+        var f = normFilter(jQuery.trim($cells.eq(3).text())); if (f && preFilters.indexOf(f) === -1) preFilters.push(f);
+      }
+    });
+    preCategories.sort(); preTargets.sort(); preFilters.sort();
+    var at = $allTbl.DataTable({
       responsive: true, pageLength: 25, order: [[1,'asc'],[0,'asc']], dom: 'Bfrtip', buttons: ['copy','csv','excel','pdf','print'],
       initComplete: function() {
         var api = this.api();
@@ -3153,19 +3218,16 @@ document.addEventListener('DOMContentLoaded', function() {
         function getOvChecked(menuId){ return jQuery('#'+menuId+' input.filter-cb:checked').map(function(){ return jQuery(this).attr('data-value'); }).get(); }
         function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; jQuery('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
         function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$/i, '').trim() || s; }
-        function fillOvDropdown(menuId, btnId, colIdx, label, valueNormalizer) {
+        function fillOvDropdownFromArray(menuId, btnId, values, label) {
           var menu = jQuery('#'+menuId); if (!menu.length) return; menu.empty();
-          var rawVals = api.column(colIdx).data().toArray().filter(Boolean);
-          var vals = valueNormalizer ? rawVals.map(function(v){ return valueNormalizer(v); }) : rawVals;
-          var uniq = []; jQuery.each(vals, function(i,v){ if (jQuery.inArray(v, uniq) === -1) uniq.push(v); }); uniq.sort();
-          jQuery.each(uniq, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
+          jQuery.each(values, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
           menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
           menu.on('click', function(e){ e.stopPropagation(); });
           updateOvBtn(btnId, menuId, label);
         }
-        fillOvDropdown('overviewFilterCategoryMenu','overviewFilterCategoryBtn', 1, 'Category');
-        fillOvDropdown('overviewFilterTargetMenu','overviewFilterTargetBtn', 2, 'Target');
-        fillOvDropdown('overviewFilterFilterMenu','overviewFilterFilterBtn', 3, 'Filter', normalizeFilterName);
+        fillOvDropdownFromArray('overviewFilterCategoryMenu','overviewFilterCategoryBtn', preCategories, 'Category');
+        fillOvDropdownFromArray('overviewFilterTargetMenu','overviewFilterTargetBtn', preTargets, 'Target');
+        fillOvDropdownFromArray('overviewFilterFilterMenu','overviewFilterFilterBtn', preFilters, 'Filter');
         var overviewSearchFn = function(settings, data, dataIndex) {
           if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
           if (jQuery('#overviewFilterHideNotAssigned').length && jQuery('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
@@ -3190,9 +3252,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     jQuery('#showAllAssignments').prop('checked', false);
     jQuery('#showAllAssignments').on('change', function() {
+      var dt = jQuery('#allAssignmentsTable').DataTable();
       var paginateControls = jQuery('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
-      if (this.checked) { at.page.len(-1); paginateControls.hide(); } else { at.page.len(25); paginateControls.show(); }
-      at.draw();
+      if (this.checked) { dt.page.len(-1); paginateControls.hide(); } else { dt.page.len(25); paginateControls.show(); }
+      dt.draw();
     });
   }
 });

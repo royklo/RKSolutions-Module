@@ -5,7 +5,7 @@
     Two modes: (1) Assignment overview only (no device). (2) Device visualization (device required):
     outputs Assignment Overview tab and Diagram tab (flow with policy details).
     Device is mandatory for the visualization flow so filters can be validated.
-    Connect first with Connect-RKGraph, or pass auth parameters to this cmdlet.
+    Connect first with Connect-RKGraph; this cmdlet uses the existing connection.
 .PARAMETER AssignmentOverviewOnly
     Run assignment collection only and generate the same HTML as the standalone assignment overview (no device).
 .PARAMETER Device
@@ -19,28 +19,6 @@ function Get-IntuneEnrollmentFlowsReport {
     [CmdletBinding(DefaultParameterSetName = 'Device')]
     param(
         [Parameter(Mandatory = $false)]
-        [string[]] $RequiredScopes = @('User.Read.All', 'Group.Read.All', 'DeviceManagementConfiguration.Read.All', 'DeviceManagementApps.Read.All', 'DeviceManagementManagedDevices.Read.All', 'Device.Read.All', 'CloudPC.Read.All'),
-        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
-        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'AssignmentOnly')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Device')]
-        [string] $TenantId,
-        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
-        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Interactive')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'AssignmentOnly')]
-        [Parameter(Mandatory = $false, ParameterSetName = 'Device')]
-        [string] $ClientId,
-        [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
-        [SecureString] $ClientSecret,
-        [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
-        [string] $CertificateThumbprint,
-        [Parameter(Mandatory = $true, ParameterSetName = 'Identity')]
-        [switch] $Identity,
-        [Parameter(Mandatory = $true, ParameterSetName = 'AccessToken')]
-        [SecureString] $AccessToken,
-        [Parameter(Mandatory = $false)]
         [string] $OutputPath,
         [Parameter(Mandatory = $false)]
         [switch] $ExportToCsv,
@@ -48,7 +26,7 @@ function Get-IntuneEnrollmentFlowsReport {
         [string] $ExportFolder = '',
         [Parameter(Mandatory = $true, ParameterSetName = 'AssignmentOnly')]
         [switch] $AssignmentOverviewOnly,
-        [Parameter(Mandatory = $true, ParameterSetName = 'Device')]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Device')]
         [ValidateNotNullOrEmpty()]
         [string] $Device,
         [Parameter(Mandatory = $false, ParameterSetName = 'Device')]
@@ -61,17 +39,20 @@ function Get-IntuneEnrollmentFlowsReport {
 
 $ErrorActionPreference = 'Stop'
 
+# Scopes required by this report (authorization is handled by Connect-RKGraph)
+$requiredScopes = @('User.Read.All', 'Group.Read.All', 'DeviceManagementConfiguration.Read.All', 'DeviceManagementApps.Read.All', 'DeviceManagementManagedDevices.Read.All', 'Device.Read.All', 'CloudPC.Read.All')
+
 try {
     Write-Host 'Intune Assignment Overview (RKSolutions)' -ForegroundColor White
     Write-Host ''
 
     if (-not $AssignmentOverviewOnly -and [string]::IsNullOrWhiteSpace($Device)) {
-        Write-Error "Device is required for the visualization flow. Use -Device 'DeviceName', an Intune managed device ID (GUID), or an Entra device object ID (GUID). Use -AssignmentOverviewOnly for assignment-only report."
+        Write-Error "You must specify either -AssignmentOverviewOnly (for assignment overview only) or -Device (for device visualization). Example: Get-IntuneEnrollmentFlowsReport -AssignmentOverviewOnly"
         return
     }
 
     Write-Host 'Connecting to Microsoft Graph...' -ForegroundColor Yellow
-    $connected = Invoke-RKSolutionsWithConnection -RequiredScopes $RequiredScopes -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret -CertificateThumbprint $CertificateThumbprint -Identity:$Identity -AccessToken $AccessToken -DebugMode:$DebugMode -ParameterSetName $PSCmdlet.ParameterSetName
+    $connected = Invoke-RKSolutionsWithConnection -RequiredScopes $requiredScopes -ParameterSetName 'Interactive' -DebugMode:$DebugMode
     if (-not $connected) { throw 'Failed to connect to Microsoft Graph.' }
 
     $tenantInfo = Invoke-MgGraphRequest -Uri 'beta/organization' -Method Get -OutputType PSObject

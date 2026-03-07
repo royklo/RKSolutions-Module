@@ -46,6 +46,13 @@ Or from the `module` folder:
 Import-Module ./RKSolutions.psd1 -Force
 ```
 
+**After changing module code**, reload so your session uses the updated files:
+
+```powershell
+Remove-Module RKSolutions -Force
+Import-Module ./module/RKSolutions.psd1 -Force
+```
+
 ## Quick start
 
 ```powershell
