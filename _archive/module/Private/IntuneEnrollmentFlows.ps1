@@ -1,20 +1,9 @@
 # Intune Enrollment Flows - Private helpers
 
 $ErrorActionPreference = 'Stop'
-$script:AllFilters = @{}
-$script:AllGroups = @{}
+$script:AllFilters = $null
+$script:AllGroups = $null
 $script:GroupMemberTypeCache = $null
-
-# Shared helper: convert boolean/null to Yes/No/dash
-$script:ToYesNo = { param($v) if ($null -eq $v) { "—" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
-
-# Shared lookup tables for OData assignment type <-> friendly name
-$script:ODataToFriendly = @{
-    '#microsoft.graph.allDevicesAssignmentTarget'         = 'All Devices'
-    '#microsoft.graph.allLicensedUsersAssignmentTarget'   = 'All Users'
-    '#microsoft.graph.groupAssignmentTarget'              = 'Group (Include)'
-    '#microsoft.graph.exclusionGroupAssignmentTarget'     = 'Group (Exclude)'
-}
 
 # Single source of truth for Graph device $select (Section 8.1)
 $script:ManagedDeviceSelectProperties = @(
@@ -41,8 +30,8 @@ function Get-GroupMemberTargetType {
     if ($script:GroupMemberTypeCache.ContainsKey($GroupId)) { return $script:GroupMemberTypeCache[$GroupId] }
     $result = 'Unknown'
     # 1. For dynamic groups, analyze the membershipRule
-    if ($script:AllGroups.Count -gt 0) {
-        $group = $script:AllGroups[$GroupId]
+    if ($script:AllGroups) {
+        $group = $script:AllGroups | Where-Object { $_.id -eq $GroupId } | Select-Object -First 1
         if ($group) {
             $isDynamic = $group.groupTypes -and (@($group.groupTypes) -contains 'DynamicMembership')
             if ($isDynamic -and $group.membershipRule) {
@@ -144,7 +133,7 @@ function Get-EspConfigByDisplayName {
         $rawEsp = Invoke-MgGraphRequest -Uri $getUri -Method GET -OutputType PSObject -ErrorAction Stop
         $esp = if ($rawEsp.PSObject.Properties['value']) { $rawEsp.value } else { $rawEsp }
         if (-not $esp) { return $null }
-        $toYesNo = $script:ToYesNo
+        $toYesNo = { param($v) if ($null -eq $v) { "—" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
         $desc = if ($esp.description) { $esp.description } else { "—" }
         $timeoutVal = $esp.installProgressTimeoutInMinutes; $timeoutMinutes = if ($null -ne $timeoutVal) { [int]$timeoutVal } else { $null }; $timeoutDisplay = if ($null -ne $timeoutMinutes) { "$timeoutMinutes" } else { "—" }
         $showProgressVal = $esp.showInstallationProgress; $showProgress = & $toYesNo $showProgressVal
@@ -191,8 +180,8 @@ function Get-GroupParentGroupNames {
         $parentNames = @()
         foreach ($parent in $memberOf) {
             $parentId = $parent.id
-            if ($script:AllGroups.Count -gt 0) {
-                $p = $script:AllGroups[$parentId]
+            if ($script:AllGroups) {
+                $p = $script:AllGroups | Where-Object { $_.id -eq $parentId } | Select-Object -First 1
                 if ($p -and $p.displayName) { $parentNames += $p.displayName }
             }
         }
@@ -216,7 +205,7 @@ function Get-GroupDirectMemberGroupIds {
             $otype = $null
             if ($m.PSObject.Properties['@odata.type']) { $otype = $m.'@odata.type' }
             if (-not $otype -and $m.PSObject.Properties['odata.type']) { $otype = $m.'odata.type' }
-            $isGroup = ($otype -eq '#microsoft.graph.group') -or ($script:AllGroups.Count -gt 0 -and $script:AllGroups.ContainsKey($mid))
+            $isGroup = ($otype -eq '#microsoft.graph.group') -or ($script:AllGroups -and ($script:AllGroups | Where-Object { $_.id -eq $mid }))
             if ($isGroup) { $groupIds += $mid }
         }
         return $groupIds
@@ -252,7 +241,7 @@ function Get-NestedGroupChainNames {
     for ($i = $levels.Count - 1; $i -ge 0; $i--) { $orderedIds += $levels[$i] }
     $names = @()
     foreach ($nid in $orderedIds) {
-        $ng = $script:AllGroups[$nid]
+        $ng = $script:AllGroups | Where-Object { $_.id -eq $nid } | Select-Object -First 1
         if ($ng -and $ng.displayName) { $names += $ng.displayName }
     }
     return $names
@@ -260,8 +249,8 @@ function Get-NestedGroupChainNames {
 
 function Get-GroupInfo {
     param([Parameter(Mandatory)][string]$GroupId)
-    if ($script:AllGroups.Count -gt 0) {
-        $group = $script:AllGroups[$GroupId]
+    if ($script:AllGroups) {
+        $group = $script:AllGroups | Where-Object { $_.id -eq $GroupId } | Select-Object -First 1
         if ($group) { return @{ Id = $group.id; DisplayName = $group.displayName; Success = $true } }
     }
     try {
@@ -319,10 +308,10 @@ function Get-DetailedPolicyAssignments {
     if (-not $assignmentsUri) { return @() }
     
     try {
-        Write-Verbose "        Querying assignments for: $PolicyName ($EntityType, $EntityId)"
-        Write-Verbose "        Assignments URI: $assignmentsUri"
+        Write-Host "        Querying assignments for: $PolicyName ($EntityType, $EntityId)" -ForegroundColor Cyan
+        Write-Host "        Assignments URI: $assignmentsUri" -ForegroundColor Cyan
         $assignments = Invoke-GraphRequestWithPaging -Uri $assignmentsUri -Method "GET" -DebugMode:$DebugMode
-        Write-Verbose "        Assignments result: $($assignments.Count) assignments returned"
+        Write-Host "        Assignments result: $($assignments.Count) assignments returned" -ForegroundColor Cyan
         
         $detailedAssignments = @()
         foreach ($assignment in $assignments) {
@@ -372,7 +361,7 @@ function Get-DetailedPolicyAssignments {
             $filterPlatform = $null
             
             if ($targetId) {
-                $filter = $script:AllFilters[$targetId]
+                $filter = $script:AllFilters | Where-Object { $_.id -eq $targetId } | Select-Object -First 1
                 if ($filter) {
                     $filterId = $filter.id
                     $filterName = $filter.displayName
@@ -388,7 +377,16 @@ function Get-DetailedPolicyAssignments {
             }
             
             # Convert raw OData type to friendly AssignmentType for categorization
-            $friendlyAssignmentType = if ($script:ODataToFriendly.ContainsKey($targetType)) { $script:ODataToFriendly[$targetType] } else { $targetType }
+            $friendlyAssignmentType = $targetType
+            if ($targetType -eq '#microsoft.graph.allDevicesAssignmentTarget') {
+                $friendlyAssignmentType = "All Devices"
+            } elseif ($targetType -eq '#microsoft.graph.allLicensedUsersAssignmentTarget') {
+                $friendlyAssignmentType = "All Users"
+            } elseif ($targetType -eq '#microsoft.graph.groupAssignmentTarget') {
+                $friendlyAssignmentType = "Group (Include)"
+            } elseif ($targetType -eq '#microsoft.graph.exclusionGroupAssignmentTarget') {
+                $friendlyAssignmentType = "Group (Exclude)"
+            }
             
             $detailedAssignments += [PSCustomObject]@{
                 PolicyName = $PolicyName
@@ -467,7 +465,7 @@ function Get-DetailedPolicyAssignmentsFromExpanded {
         $filterPlatform = $null
         
         if ($targetId) {
-            $filter = $script:AllFilters[$targetId]
+            $filter = $script:AllFilters | Where-Object { $_.id -eq $targetId } | Select-Object -First 1
             if ($filter) {
                 $filterId = $filter.id
                 $filterName = $filter.displayName
@@ -483,7 +481,16 @@ function Get-DetailedPolicyAssignmentsFromExpanded {
         }
         
         # Convert raw OData type to friendly AssignmentType for categorization
-        $friendlyAssignmentType = if ($script:ODataToFriendly.ContainsKey($targetType)) { $script:ODataToFriendly[$targetType] } else { $targetType }
+        $friendlyAssignmentType = $targetType
+        if ($targetType -eq '#microsoft.graph.allDevicesAssignmentTarget') {
+            $friendlyAssignmentType = "All Devices"
+        } elseif ($targetType -eq '#microsoft.graph.allLicensedUsersAssignmentTarget') {
+            $friendlyAssignmentType = "All Users"
+        } elseif ($targetType -eq '#microsoft.graph.groupAssignmentTarget') {
+            $friendlyAssignmentType = "Group (Include)"
+        } elseif ($targetType -eq '#microsoft.graph.exclusionGroupAssignmentTarget') {
+            $friendlyAssignmentType = "Group (Exclude)"
+        }
         
         $detailedAssignments += [PSCustomObject]@{
             PolicyName = $PolicyName
@@ -577,7 +584,7 @@ function Get-CloudPCPolicyWithAssignments {
                             if ($group) {
                                 $groupToAdd = Normalize-EntraGroupForDisplay -Group $group
                                 if ($groupToAdd) {
-                                    $script:AllGroups[$groupToAdd.id] = $groupToAdd
+                                    if ($script:AllGroups) { $script:AllGroups = @($script:AllGroups) + @($groupToAdd) } else { $script:AllGroups = @($groupToAdd) }
                                 }
                             }
                         }
@@ -627,7 +634,7 @@ function Get-CloudPCPolicyWithAssignments {
                                 if ($group) {
                                     $groupToAdd = Normalize-EntraGroupForDisplay -Group $group
                                     if ($groupToAdd) {
-                                        $script:AllGroups[$groupToAdd.id] = $groupToAdd
+                                        if ($script:AllGroups) { $script:AllGroups = @($script:AllGroups) + @($groupToAdd) } else { $script:AllGroups = @($groupToAdd) }
                                     }
                                 }
                             }
@@ -721,6 +728,99 @@ function Get-CloudPCPolicyWithAssignments {
     return $policy
 }
 
+# When batch still gets 0 Cloud PC assignments, fetch .../assignments directly and build detailed list (for Assignment tab + Mermaid + flow).
+function Get-CloudPCAssignmentsFallback {
+    param([Parameter(Mandatory)][string]$EntityType, [Parameter(Mandatory)][string]$EntityId, [string]$PolicyName, [object]$Policy, [switch]$DebugMode)
+    $baseUri = "https://graph.microsoft.com/beta/deviceManagement/$EntityType/$EntityId"
+    $list = @()
+    $assignments = @()
+    try {
+        $assignmentsJson = Invoke-MgGraphRequest -Uri "$baseUri/assignments" -Method GET -OutputType Json -ErrorAction Stop
+        if (-not [string]::IsNullOrWhiteSpace($assignmentsJson)) {
+            $resp = $assignmentsJson | ConvertFrom-Json
+            if ($resp.value) { $assignments = @($resp.value) }
+            elseif ($resp -is [Array]) { $assignments = @($resp) }
+        }
+    }
+    catch { if ($DebugMode) { Write-Warning "Get-CloudPCAssignmentsFallback (Json) $EntityType $EntityId : $($_.Exception.Message)" } }
+    if ($assignments.Count -eq 0) {
+        try {
+            $raw = Invoke-MgGraphRequest -Uri "$baseUri/assignments" -Method GET -ErrorAction Stop
+            if ($raw) {
+                if ($raw -is [System.Collections.IDictionary]) {
+                    if ($raw.ContainsKey('value')) { $assignments = @($raw['value']) }
+                    elseif ($raw.ContainsKey('Value')) { $assignments = @($raw['Value']) }
+                }
+                elseif ($raw.PSObject.Properties['value']) { $assignments = @($raw.value) }
+                elseif ($raw.PSObject.Properties['Value']) { $assignments = @($raw.Value) }
+            }
+        }
+        catch { if ($DebugMode) { Write-Warning "Get-CloudPCAssignmentsFallback (default) $EntityType $EntityId : $($_.Exception.Message)" } }
+    }
+    if ($assignments.Count -eq 0) { return $list }
+        $getProp = {
+            param($obj, $names)
+            if ($null -eq $obj) { return $null }
+            if ($obj -is [System.Collections.IDictionary]) {
+                foreach ($n in $names) {
+                    if ($obj.ContainsKey($n)) { return $obj[$n] }
+                    $key = ($obj.Keys | Where-Object { $_ -eq $n } | Select-Object -First 1)
+                    if ($key -ne $null) { return $obj[$key] }
+                }
+                return $null
+            }
+            foreach ($n in $names) { if ($obj.PSObject.Properties[$n]) { return $obj.PSObject.Properties[$n].Value } }
+            return $null
+        }
+        foreach ($assignment in $assignments) {
+            if ($null -eq $assignment) { continue }
+            $targetType = "Unknown"; $targetName = "Unknown"; $targetId = $null; $groupId = $null
+            $targetObj = & $getProp $assignment @('target', 'Target')
+            if ($targetObj) {
+                $odataType = & $getProp $targetObj @('@odata.type', 'ODataType', 'odata.type')
+                $targetType = switch -Regex ($odataType) {
+                    "allLicensedUsersAssignmentTarget" { "All Users" }
+                    "allDevicesAssignmentTarget"     { "All Devices" }
+                    "groupAssignmentTarget"           { "Group (Include)" }
+                    "exclusionGroupAssignmentTarget"  { "Group (Exclude)" }
+                    "cloudPcManagementGroupAssignmentTarget" { "Group (Include)" }
+                    default { if ($odataType) { $odataType } else { "Unknown" } }
+                }
+                $gid = & $getProp $targetObj @('groupId', 'GroupId')
+                if ($gid) {
+                    $targetId = $gid; $groupId = $gid
+                    $group = $script:AllGroups | Where-Object { $_.id -eq $gid } | Select-Object -First 1
+                    if (-not $group) {
+                        try {
+                            $groupJson = Invoke-MgGraphRequest -Uri "https://graph.microsoft.com/v1.0/groups/$gid`?`$select=id,displayName,membershipRule,groupTypes" -Method GET -OutputType Json -ErrorAction Stop
+                            if (-not [string]::IsNullOrWhiteSpace($groupJson)) {
+                                $group = $groupJson | ConvertFrom-Json
+                                if ($group) {
+                                    $groupToAdd = Normalize-EntraGroupForDisplay -Group $group
+                                    if ($groupToAdd) {
+                                        if ($script:AllGroups) { $script:AllGroups = @($script:AllGroups) + @($groupToAdd) }
+                                        else { $script:AllGroups = @($groupToAdd) }
+                                        $group = $groupToAdd
+                                    }
+                                }
+                            }
+                        } catch { }
+                    }
+                    $targetName = if ($group) { $group.displayName } else { "Group (ID: $gid)" }
+                }
+                else { $targetName = $targetType }
+            }
+            $assignmentId = & $getProp $assignment @('id', 'Id')
+            $list += [PSCustomObject]@{
+                PolicyName = $PolicyName; PolicyId = $EntityId; PolicyType = $EntityType
+                AssignmentType = $targetType; AssignmentIntent = "Apply"; TargetName = $targetName; TargetId = $targetId; GroupId = $groupId
+                FilterId = $null; FilterName = "No Filter"; FilterType = "None"; FilterRule = $null; FilterPlatform = $null
+                AssignmentId = $assignmentId
+            }
+        }
+    return $list
+}
+
 function Get-CloudPCProvisioningConfigByDisplayName {
     param([Parameter(Mandatory)][string]$DisplayName)
     try {
@@ -732,6 +832,19 @@ function Get-CloudPCProvisioningConfigByDisplayName {
         return $policy
     }
     catch { return $null }
+}
+
+# Integrated Cloud PC Provisioning Policy Group Info logic (formerly public cmdlet)
+# Usage: Call Get-CloudPCProvisioningPolicyGroupInfo -PolicyName "..." or -PolicyId "..." as a private helper
+function Get-CloudPCProvisioningPolicyGroupInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(ParameterSetName = 'ByName')][string]$PolicyName,
+        [Parameter(ParameterSetName = 'ById')][string]$PolicyId,
+        [switch]$DebugMode
+    )
+    # Directly call the internal helper
+    return Get-CloudPCPolicyGroupInfoInternal -PolicyName $PolicyName -PolicyId $PolicyId -DebugMode:$DebugMode
 }
 
 function Get-CloudPCUserSettingsConfigByDisplayName {
@@ -746,7 +859,7 @@ function Get-CloudPCUserSettingsConfigByDisplayName {
         $policy = Invoke-MgGraphRequest -Uri $getUri -Method GET -OutputType PSObject -ErrorAction Stop
         if (-not $policy) { return $null }
         
-        $toYesNo = $script:ToYesNo
+        $toYesNo = { param($v) if ($null -eq $v) { "—" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
         
         $name = if ($policy.displayName) { $policy.displayName } else { "—" }
         $selfServiceEnabled = & $toYesNo $policy.selfServiceEnabled
@@ -935,8 +1048,10 @@ function Get-CloudPCPolicyGroupInfoInternal {
         $normalized = Normalize-EntraGroupForDisplay -Group $group
         $displayName = $normalized.displayName; if ([string]::IsNullOrWhiteSpace($displayName)) { $displayName = "Group (ID: $gid)" }
         if ($UpdateAllGroups) {
-            if (-not $script:AllGroups.ContainsKey($gid)) {
-                $script:AllGroups[$gid] = [PSCustomObject]@{ id = $gid; displayName = $displayName; groupTypes = $normalized.groupTypes; membershipRule = $normalized.membershipRule }
+            $exists = $null; if ($script:AllGroups) { $exists = $script:AllGroups | Where-Object { $_.id -eq $gid } | Select-Object -First 1 }
+            if (-not $exists) {
+                $grp = [PSCustomObject]@{ id = $gid; displayName = $displayName; groupTypes = $normalized.groupTypes; membershipRule = $normalized.membershipRule }
+                if ($script:AllGroups) { $script:AllGroups = @($script:AllGroups) + @($grp) } else { $script:AllGroups = @($grp) }
             }
         }
         $isDynamic = $normalized.groupTypes -and (@($normalized.groupTypes) -contains 'DynamicMembership')
@@ -953,10 +1068,7 @@ function Get-AllPolicyAssignmentsBatch {
     param([Parameter(Mandatory)][array]$PolicyTypes, [switch]$DebugMode)
     $allPolicyAssignments = [System.Collections.ArrayList]::new()
     $GraphEndpoint = "https://graph.microsoft.com"
-    if ($script:AllFilters.Count -eq 0) {
-        $rawFilters = Invoke-GraphRequestWithPaging -Uri "$GraphEndpoint/beta/deviceManagement/assignmentFilters" -Method "GET" -DebugMode:$DebugMode
-        if ($rawFilters) { foreach ($f in $rawFilters) { $script:AllFilters[$f.id] = $f } }
-    }
+    $script:AllFilters = Invoke-GraphRequestWithPaging -Uri "$GraphEndpoint/beta/deviceManagement/assignmentFilters" -Method "GET" -DebugMode:$DebugMode
     foreach ($policyType in $PolicyTypes) {
         Write-Host "  Processing $($policyType.DisplayName)..." -ForegroundColor Cyan
         try {
@@ -1084,19 +1196,17 @@ function Get-AllIntunePoliciesWithAssignments {
         @{ Name = "Applications"; EntityType = "deviceAppManagement/mobileApps"; DisplayName = "Applications" },
         @{ Name = "Platform Scripts"; EntityType = "deviceManagementScripts"; DisplayName = "Platform Scripts" },
         @{ Name = "Remediation Scripts"; EntityType = "deviceHealthScripts"; DisplayName = "Proactive Remediation Scripts" },
-        @{ Name = "Autopilot Profile"; EntityType = "windowsAutopilotDeploymentProfiles"; DisplayName = "Autopilot Profile" },
-        @{ Name = "Enrollment Status Page"; EntityType = "deviceEnrollmentConfigurations"; DisplayName = "Enrollment Status Page" },
+        @{ Name = "Autopilot Profiles"; EntityType = "windowsAutopilotDeploymentProfiles"; DisplayName = "Autopilot Deployment Profiles" },
+        @{ Name = "ESP Profiles"; EntityType = "deviceEnrollmentConfigurations"; DisplayName = "Enrollment Status Page Profiles" },
         @{ Name = "Endpoint Security"; EntityType = "deviceManagement/intents"; DisplayName = "Endpoint Security Policies" },
         @{ Name = "Cloud PC Provisioning"; EntityType = "virtualEndpoint/provisioningPolicies"; DisplayName = "Cloud PC Provisioning Policies" },
         @{ Name = "Cloud PC User Settings"; EntityType = "virtualEndpoint/userSettings"; DisplayName = "Cloud PC User Settings" }
     )
     Write-Host "Retrieving assignment filters and groups..." -ForegroundColor Yellow
-    $rawFilters = Invoke-GraphRequestWithPaging -Uri "$GraphEndpoint/beta/deviceManagement/assignmentFilters" -Method "GET" -DebugMode:$DebugMode
-    $script:AllFilters = @{}
-    if ($rawFilters) { foreach ($f in $rawFilters) { $script:AllFilters[$f.id] = $f } }
-    $rawGroups = Invoke-GraphRequestWithPaging -Uri "$GraphEndpoint/v1.0/groups?`$select=id,displayName,membershipRule,groupTypes" -Method "GET" -DebugMode:$DebugMode
-    $script:AllGroups = @{}
-    if ($rawGroups) { foreach ($g in $rawGroups) { $n = Normalize-EntraGroupForDisplay -Group $g; if ($n -and $n.id) { $script:AllGroups[$n.id] = $n } } }
+    $script:AllFilters = Invoke-GraphRequestWithPaging -Uri "$GraphEndpoint/beta/deviceManagement/assignmentFilters" -Method "GET" -DebugMode:$DebugMode
+    $script:AllGroups = Invoke-GraphRequestWithPaging -Uri "$GraphEndpoint/v1.0/groups?`$select=id,displayName,membershipRule,groupTypes" -Method "GET" -DebugMode:$DebugMode
+    # Normalize so Assigned groups don't show license info in membershipRule (only Dynamic groups keep membershipRule)
+    if ($script:AllGroups) { $script:AllGroups = @($script:AllGroups | ForEach-Object { Normalize-EntraGroupForDisplay -Group $_ }) }
     Write-Host "  ✓ Assignment filters and groups" -ForegroundColor Green
     Write-Host "Collecting policy assignments from $($policyTypes.Count) categories..." -ForegroundColor Yellow
     Get-AllPolicyAssignmentsBatch -PolicyTypes $policyTypes -DebugMode:$DebugMode
@@ -1422,7 +1532,7 @@ function ConvertTo-CanonicalAssignment {
 }
 
 function Test-AssignmentAppliesToDevice {
-    param([Parameter(Mandatory)][PSCustomObject]$CanonicalAssignment, [Parameter(Mandatory)][PSCustomObject]$DeviceContext, [hashtable]$Filters)
+    param([Parameter(Mandatory)][PSCustomObject]$CanonicalAssignment, [Parameter(Mandatory)][PSCustomObject]$DeviceContext, [array]$Filters)
     $dp = $DeviceContext.DeviceProperties
     $userGroupIds = if ($DeviceContext.UserGroupIds) { @($DeviceContext.UserGroupIds) } else { @() }
     $deviceGroupIds = if ($DeviceContext.DeviceGroupIds) { @($DeviceContext.DeviceGroupIds) } else { @() }
@@ -1452,7 +1562,7 @@ function Test-AssignmentAppliesToDevice {
     $filterResult = 'N/A'; $applies = $baseApplicable
     $hasRealFilter = $filterId -and $filterId -ne "00000000-0000-0000-0000-000000000000" -and $filterType -and $filterType -ne "none"
     if ($hasRealFilter -and $baseApplicable) {
-        $filterObj = $Filters[$filterId]
+        $filterObj = $Filters | Where-Object { $_.id -eq $filterId } | Select-Object -First 1
         if ($filterObj) {
             $filterMatched = Test-IntuneFilter -FilterRule $filterObj.rule -DeviceProperties $dp
             if ($filterMatched) { $filterResult = 'Matched' } else { $filterResult = 'NotMatched' }
@@ -1466,7 +1576,7 @@ function Test-AssignmentAppliesToDevice {
 
 function Invoke-EvaluateAssignmentsForDevice {
     param([Parameter(Mandatory)][array]$PolicyAssignments, [Parameter(Mandatory)][PSCustomObject]$DeviceContext, [switch]$ApplyPlatformFilter, [switch]$DebugMode)
-    $filters = $script:AllFilters; if (-not $filters) { $filters = @{} }
+    $filters = $script:AllFilters; if (-not $filters) { $filters = @() }
     $deviceOs = $DeviceContext.DeviceProperties.OperatingSystem
     $devicePlatform = Get-NormalizedDevicePlatform -OperatingSystem $deviceOs
     $out = [System.Collections.ArrayList]::new()
@@ -1545,6 +1655,7 @@ function Get-AssignmentOverviewTabFragment {
     # Count all unique policies, regardless of assignment status
     $totalPolicies = if ($PolicyAssignments) { ($PolicyAssignments | Select-Object -Property PolicyName -Unique).Count } else { 0 }
     $unassignedPolicies = if ($PolicyAssignments) { ($PolicyAssignments | Where-Object { $_.AssignmentType -eq "Not Assigned" } | Select-Object -Property PolicyName -Unique).Count } else { 0 }
+    $enrollmentFlowCount = 0
     $filtersUsed = $PolicyAssignments | Where-Object { $_.FilterName -and $_.FilterName -ne "No Filter" -and $_.FilterName -ne "Filter Not Found" }
     $filterStats = if ($filtersUsed) { $filtersUsed | Group-Object -Property FilterName | Sort-Object Count -Descending } else { @() }
     $hasCategory = ($PolicyAssignments | Select-Object -First 1).PSObject.Properties.Name -contains 'PolicyCategory'
@@ -1553,8 +1664,8 @@ function Get-AssignmentOverviewTabFragment {
     if ($PolicyAssignments -and $PolicyAssignments.Count -gt 0) {
         foreach ($a in $PolicyAssignments) {
             $targetName = if ($a.AssignmentType -match "^(All Devices|All Users)$") { $a.AssignmentType } else { [System.Net.WebUtility]::HtmlEncode($a.TargetName) }
-            if ([string]::IsNullOrWhiteSpace($targetName) -and $a.GroupId -and $script:AllGroups.Count -gt 0) {
-                $grp = $script:AllGroups[$a.GroupId]
+            if ([string]::IsNullOrWhiteSpace($targetName) -and $a.GroupId -and $script:AllGroups) {
+                $grp = $script:AllGroups | Where-Object { $_.id -eq $a.GroupId } | Select-Object -First 1
                 if ($grp -and $grp.displayName) { $targetName = [System.Net.WebUtility]::HtmlEncode($grp.displayName) }
             }
             if ([string]::IsNullOrWhiteSpace($targetName)) { $targetName = [System.Net.WebUtility]::HtmlEncode([string]$a.TargetName) }
@@ -1655,8 +1766,8 @@ function Get-AssignmentOverviewTabFragment {
                                     </div>
                                     <div class="modern-table-body">
                                         <div class="table-responsive">
-                                            <table class="table modern-table table-hover text-start" id="allAssignmentsTable">
-                                                <thead><tr><th class="text-start">Policy Name</th><th class="text-start">Category</th><th class="text-start">Target</th><th class="text-start">Filter</th></tr></thead>
+                                            <table class="table modern-table table-hover" id="allAssignmentsTable">
+                                                <thead><tr><th>Policy Name</th><th>Category</th><th>Target</th><th>Filter</th></tr></thead>
                                                 <tbody>
 __PH_TABLEROWS__
                                                 </tbody>
@@ -1669,7 +1780,7 @@ __PH_TABLEROWS__
 __PH_FILTERS__
                     </div>
 '@
-    $overviewTemplate.Replace('__PH_TP__', [string]$totalPolicies).Replace('__PH_UP__', [string]$unassignedPolicies).Replace('__PH_TABLEROWS__', $tableRows).Replace('__PH_FILTERS__', $filtersSectionHtml)
+    $overviewTemplate.Replace('__PH_TP__', [string]$totalPolicies).Replace('__PH_TA__', [string]$totalAssignments).Replace('__PH_EF__', [string]$enrollmentFlowCount).Replace('__PH_UP__', [string]$unassignedPolicies).Replace('__PH_TABLEROWS__', $tableRows).Replace('__PH_FILTERS__', $filtersSectionHtml)
 }
 
 function New-AssignmentOverviewHtmlReport {
@@ -1716,10 +1827,10 @@ document.addEventListener('DOMContentLoaded', function() {
     preCategories.sort(); preTargets.sort(); preFilters.sort();
     var at = $allTbl.DataTable({
       responsive: true, pageLength: 25, order: [[1,'asc'],[0,'asc']], dom: 'Bfrtip', buttons: ['copy','csv','excel','pdf','print'],
-            columnDefs: [
-                { targets: [0,1,2,3], className: 'text-start' },
-                { targets: 0, width: '25%' }, { targets: 1, width: '15%' }, { targets: 2, width: '15%' }, { targets: 3, width: '20%' }
-            ],
+      columnDefs: [
+        { targets: [2], className: 'text-center' },
+        { targets: 0, width: '25%' }, { targets: 1, width: '15%' }, { targets: 2, width: '15%' }, { targets: 3, width: '20%' }
+      ],
       initComplete: function() {
         var api = this.api();
         function escOv(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1770,11 +1881,11 @@ document.addEventListener('DOMContentLoaded', function() {
     var filtersTable = jQuery('#filtersTable').DataTable({
       responsive: true, pageLength: 10, order: [[3, 'desc']],
       dom: 'Bfrtip', buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
-            columnDefs: [
-                { targets: [0,1,2,3], className: 'text-start' },
-                { targets: 0, width: '20%' }, { targets: 1, width: '40%' }, { targets: 2, width: '15%' },
-                { targets: 3, width: '25%' }
-            ]
+      columnDefs: [
+        { targets: [3], className: 'text-center' },
+        { targets: 0, width: '20%' }, { targets: 1, width: '40%' }, { targets: 2, width: '15%' },
+        { targets: 3, width: '25%' }
+      ]
     });
     jQuery('#showAllFilters').prop('checked', false);
     jQuery('#showAllFilters').on('change', function() {
@@ -2020,8 +2131,8 @@ function Get-ArchitectureDiagramFragment {
         $name = $row.PolicyName
         $at = $row.AssignmentType
         $gid = $row.GroupId
-        if ($cat -eq "Autopilot Profile") { if (-not $autopilotPolicies.Contains($name)) { [void]$autopilotPolicies.Add($name) } }
-        elseif ($cat -eq "Enrollment Status Page") { if (-not $espPolicies.Contains($name)) { [void]$espPolicies.Add($name) } }
+        if ($cat -eq "Autopilot Profiles") { if (-not $autopilotPolicies.Contains($name)) { [void]$autopilotPolicies.Add($name) } }
+        elseif ($cat -eq "ESP Profiles") { if (-not $espPolicies.Contains($name)) { [void]$espPolicies.Add($name) } }
         elseif ($cat -eq "Security Baselines") {
             if (& $isDeviceAssignment $at $gid) { if (-not $securityBaselineDevicePolicies.Contains($name)) { [void]$securityBaselineDevicePolicies.Add($name) } }
             if (& $isUserAssignment $at $gid) { if (-not $securityBaselineUserPolicies.Contains($name)) { [void]$securityBaselineUserPolicies.Add($name) } }
@@ -2184,10 +2295,10 @@ function Get-AppliedFlowHtmlFragment {
         $name = $row.PolicyName
         $at = $row.AssignmentType
         $gid = $row.GroupId
-        if ($cat -eq "Autopilot Profile") {
+        if ($cat -eq "Autopilot Profiles") {
             if (-not $autopilotPolicies.Contains($name)) { [void]$autopilotPolicies.Add($name) }
         }
-        elseif ($cat -eq "Enrollment Status Page") {
+        elseif ($cat -eq "ESP Profiles") {
             if (-not $espPolicies.Contains($name)) { [void]$espPolicies.Add($name) }
         }
         elseif ($cat -eq "Security Baselines") {
@@ -2258,10 +2369,12 @@ function Get-AppliedFlowHtmlFragment {
             }
         }
         # For group assignments: show type (Dynamic/Assigned) like Entra ID groups, and membership rule when dynamic
-        if ($a.GroupId -and $script:AllGroups.Count -gt 0) {
-            $grp = $script:AllGroups[$a.GroupId]
+        if ($a.GroupId -and $script:AllGroups) {
+            $grp = $script:AllGroups | Where-Object { $_.id -eq $a.GroupId } | Select-Object -First 1
             if ($grp) {
                 $isDynamic = $grp.groupTypes -and (@($grp.groupTypes) -contains 'DynamicMembership')
+                $typeLabel = if ($isDynamic) { "Dynamic" } else { "Static" }
+                $target = "$target ($typeLabel)"
                 # Only override filter display with membership rule if it's a dynamic group AND no Intune filter is set
                 if ($isDynamic -and $grp.membershipRule -and ($a.FilterName -eq "No Filter" -or -not $a.FilterName)) { $filterD = $grp.membershipRule }
             }
@@ -2276,8 +2389,8 @@ function Get-AppliedFlowHtmlFragment {
         $groupName = if ($a.AssignmentType -match "^(All Devices|All Users)$") { $a.AssignmentType } else { $a.TargetName }
         $typeLabel = "—"
         $rule = if ($a.FilterName -and $a.FilterName -ne "No Filter" -and $a.FilterName -ne "Filter Not Found") { $a.FilterName } else { "No Filter" }
-        if ($a.GroupId -and $script:AllGroups.Count -gt 0) {
-            $grp = $script:AllGroups[$a.GroupId]
+        if ($a.GroupId -and $script:AllGroups) {
+            $grp = $script:AllGroups | Where-Object { $_.id -eq $a.GroupId } | Select-Object -First 1
             if ($grp) {
                 $groupName = $grp.displayName
                 $isDynamic = $grp.groupTypes -and (@($grp.groupTypes) -contains 'DynamicMembership')
@@ -2350,7 +2463,7 @@ function Get-AppliedFlowHtmlFragment {
         $stepName = if ($list.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($list[0]) } else { "— None —" }
         # Don't show step-name for any policy type - it's redundant with the header and button
         $stepNameLine = ""
-        $btnText = if ($stepId -eq "flow-autopilot") { "Expand Autopilot Profile Details" } elseif ($stepId -eq "flow-esp") { "Expand Enrollment Status Page Configuration" } else { "Expand " + $title + " (" + $n + ")" }
+        $btnText = if ($stepId -eq "flow-autopilot") { "Expand Autopilot Profile Details" } elseif ($stepId -eq "flow-esp") { "Expand ESP Configuration" } else { "Expand " + $title + " (" + $n + ")" }
         $tableHtml = if ($UseGroupTypeRuleTable) { Write-FlowPolicyTable4Col $categoryTitle "Policy Name" "Group" "Type" "Membership rule" $list $eval } else { Write-FlowPolicyTable $categoryTitle $col1Header "Assignment" "Filter" $list $eval }
         @"
 <div class=`"flow-step $stepClass`">
@@ -2447,7 +2560,7 @@ $espRestHtml
     if ($cloudPCProvisioningMerged.Count -gt 0) {
         $cloudPCPolicy = Get-CloudPCProvisioningConfigByDisplayName -DisplayName $cloudPCProvisioningMerged[0]
         if ($cloudPCPolicy) {
-            $toYesNo = $script:ToYesNo
+            $toYesNo = { param($v) if ($null -eq $v) { "—" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
             $cpName = if ($cloudPCPolicy.displayName) { [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.displayName) } else { "—" }
             $cpExperience = if ($cloudPCPolicy.userExperienceType -eq 'cloudPc') { "Access a full Cloud PC desktop" } else { [System.Net.WebUtility]::HtmlEncode([string]$cloudPCPolicy.userExperienceType) }
             $cpLicense = if ($cloudPCPolicy.managedBy -eq 'windows365') { "Enterprise" } else { [System.Net.WebUtility]::HtmlEncode([string]$cloudPCPolicy.managedBy) }
@@ -2703,7 +2816,7 @@ $cloudPCUserSettingsConfigSection
     }
     $parts += Write-FlowStepLikeReference "flow-autopilot" "step-autopilot" "Autopilot Profile" "fa-rocket" $autopilotPolicies $EvaluatedAssignments "Profile" "Autopilot Assignment" "Autopilot Profile" $autopilotConfigSection
     $parts += '<div class="flow-arrow" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>'
-    $parts += Write-FlowStepLikeReference "flow-esp" "step-esp" "Enrollment Status Page" "fa-shield-alt" $espPolicies $EvaluatedAssignments "ESP" "ESP Assignment" "Enrollment Status Page" $espConfigSection
+    $parts += Write-FlowStepLikeReference "flow-esp" "step-esp" "Enrollment Status Page" "fa-shield-alt" $espPolicies $EvaluatedAssignments "ESP" "ESP Assignment" "ESP Profile" $espConfigSection
     $parts += '<div class="flow-arrow" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>'
     $parts += Write-FlowStepTwoCol "flow-config" "Configuration Profiles" "fa-cogs" $configDevicePolicies $configUserPolicies $EvaluatedAssignments
     $parts += '<div class="flow-arrow" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>'

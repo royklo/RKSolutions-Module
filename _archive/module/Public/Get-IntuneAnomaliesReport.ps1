@@ -14,9 +14,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Scopes required by this report (authorization is handled by Connect-RKGraph)
+$requiredScopes = @('User.Read', 'DeviceManagementManagedDevices.Read.All', 'DeviceManagementConfiguration.Read.All', 'DeviceManagementServiceConfig.Read.All', 'DeviceManagementApps.Read.All', 'User.Read.All', 'Directory.Read.All', 'Mail.Send', 'CloudPC.Read.All')
 try {
-    $ctx = Get-MgContext -ErrorAction SilentlyContinue
-    if (-not $ctx) { throw 'Not connected to Microsoft Graph. Run Connect-RKGraph first.' }
+    $connected = Invoke-RKSolutionsWithConnection -RequiredScopes $requiredScopes -ParameterSetName 'Interactive' -DebugMode:$DebugMode
+    if (-not $connected) { throw 'Failed to connect to Microsoft Graph API.' }
 
     $tenantInfo = Invoke-MgGraphRequest -Uri 'beta/organization' -Method Get -OutputType PSObject
     $tenantname = $tenantInfo.value[0].displayName
@@ -37,18 +39,18 @@ try {
     $Report_InactiveDevices = $DeviceData | Where-Object { $_.LastContact -lt (Get-Date).AddDays(-90) } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel, LastContact
     $Report_DisabledPrimaryUsers = $DeviceData | Where-Object { $_.PrimaryUser -in $DisabledEntraUsers.userPrincipalName } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
 
-    $Report_NoncompliantDevices = [System.Collections.Generic.List[PSObject]]::new()
+    $Report_NoncompliantDevices = @()
     $NoncompliantDevicesRaw = $DeviceData | Where-Object { $_.ComplianceStatus -eq 'noncompliant' }
     foreach ($device in $NoncompliantDevicesRaw) {
         if ($device.NoncompliantBasedOn) {
             $reasons = $device.NoncompliantBasedOn -split ', '
             foreach ($reason in $reasons) {
                 if ($reason.Trim()) {
-                    $Report_NoncompliantDevices.Add([PSCustomObject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = $reason.Trim(); NoncompliantAlert = $device.NoncompliantAlert })
+                    $Report_NoncompliantDevices += [PSCustomObject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = $reason.Trim(); NoncompliantAlert = $device.NoncompliantAlert }
                 }
             }
         } else {
-            $Report_NoncompliantDevices.Add([PSCustomObject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = 'Unknown'; NoncompliantAlert = $device.NoncompliantAlert })
+            $Report_NoncompliantDevices += [PSCustomObject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = 'Unknown'; NoncompliantAlert = $device.NoncompliantAlert }
         }
     }
 

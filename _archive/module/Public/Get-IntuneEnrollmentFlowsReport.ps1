@@ -39,6 +39,9 @@ function Get-IntuneEnrollmentFlowsReport {
 
 $ErrorActionPreference = 'Stop'
 
+# Scopes required by this report (authorization is handled by Connect-RKGraph)
+$requiredScopes = @('User.Read.All', 'Group.Read.All', 'GroupMember.Read.All', 'DeviceManagementConfiguration.Read.All', 'DeviceManagementApps.Read.All', 'DeviceManagementManagedDevices.Read.All', 'Device.Read.All', 'CloudPC.Read.All')
+
 try {
     Write-Host 'Intune Assignment Overview (RKSolutions)' -ForegroundColor White
     Write-Host ''
@@ -48,8 +51,9 @@ try {
         return
     }
 
-    $ctx = Get-MgContext -ErrorAction SilentlyContinue
-    if (-not $ctx) { throw 'Not connected to Microsoft Graph. Run Connect-RKGraph first.' }
+    Write-Host 'Connecting to Microsoft Graph...' -ForegroundColor Yellow
+    $connected = Invoke-RKSolutionsWithConnection -RequiredScopes $requiredScopes -ParameterSetName 'Interactive' -DebugMode:$DebugMode
+    if (-not $connected) { throw 'Failed to connect to Microsoft Graph.' }
 
     $tenantInfo = Invoke-MgGraphRequest -Uri 'beta/organization' -Method Get -OutputType PSObject
     $tenantName = $tenantInfo.value[0].displayName
@@ -112,9 +116,9 @@ try {
         foreach ($mid in $memberGroupIds) { [void]$idsToHide.Add([string]$mid) }
     }
     $groupIdsToShow = $allGroupIds | Where-Object { -not $idsToHide.Contains([string]$_) }
-    if ($groupIdsToShow -and $groupIdsToShow.Count -gt 0 -and $script:AllGroups.Count -gt 0) {
+    if ($groupIdsToShow -and $groupIdsToShow.Count -gt 0 -and $script:AllGroups) {
         foreach ($gid in $groupIdsToShow) {
-            $g = $script:AllGroups[$gid]
+            $g = $script:AllGroups | Where-Object { $_.id -eq $gid } | Select-Object -First 1
             if (-not $g -or -not $g.displayName) { continue }
             $isDynamic = $g.groupTypes -and ($g.groupTypes -contains 'DynamicMembership')
             $isDirect = ($directIds | ForEach-Object { [string]$_ }) -contains [string]$gid

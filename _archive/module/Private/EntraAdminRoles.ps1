@@ -2741,13 +2741,11 @@ function Invoke-EntraAdminRolesReportCore {
         $rolesWithDefinition = Invoke-GraphRequestWithPaging -Uri "beta/roleManagement/directory/roleAssignments?`$expand=roleDefinition" -Method Get
 
         # Merge the data for complete role assignment information
-        $defLookup = @{}
-        foreach ($d in $rolesWithDefinition) { $defLookup[$d.id] = $d.roleDefinition }
-        $roles = [System.Collections.Generic.List[object]]::new($rolesWithPrincipal.Count)
+        $roles = @()
         foreach ($role in $rolesWithPrincipal) {
-            $roleDefinition = $defLookup[$role.id]
+            $roleDefinition = $rolesWithDefinition | Where-Object { $_.id -eq $role.id } | Select-Object -ExpandProperty roleDefinition
             $role | Add-Member -MemberType NoteProperty -Name roleDefinition1 -Value $roleDefinition -Force
-            $roles.Add($role)
+            $roles += $role
         }
 
         Write-Host "INFO: Found $($rolesWithPrincipal.Count) role assignments in the tenant."

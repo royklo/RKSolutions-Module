@@ -36,7 +36,7 @@ function New-IntuneAnomaliesHTMLReport {
     $Report_NotEncryptedDevices_Count = $Report_NotEncryptedDevices | Measure-Object | Select-Object -ExpandProperty Count
     $Report_DevicesWithoutAutopilotHash_Count = $Report_DevicesWithoutAutopilotHash | Measure-Object | Select-Object -ExpandProperty Count
     $Report_InactiveDevices_Count = $Report_InactiveDevices | Measure-Object | Select-Object -ExpandProperty Count
-    $Report_NoncompliantDevices_Count = ($Report_NoncompliantDevices | Select-Object -Property DeviceName -Unique | Measure-Object).Count
+    $Report_NoncompliantDevices_Count = $NoncompliantDevicesRaw | Measure-Object | Select-Object -ExpandProperty Count
     $Report_OperationSystemEdtionOverview_Count = $Report_OperationSystemEdtionOverview | Measure-Object | Select-Object -ExpandProperty Count
     $Report_DisabledPrimaryUsers_Count = $Report_DisabledPrimaryUsers | Measure-Object | Select-Object -ExpandProperty Count
     
@@ -2240,20 +2240,8 @@ function Get-AllDeviceData {
     Write-Host "Fetching Autopilot devices..." -ForegroundColor Yellow
     $AutopilotDevices = (Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeviceIdentities")
 
-    # Pre-build Autopilot lookup hashtable (serialNumber → device object) for O(1) lookups
-    $AutopilotLookup = @{}
-    foreach ($ap in $AutopilotDevices) {
-        if ($ap.serialNumber) { $AutopilotLookup[$ap.serialNumber] = $ap }
-    }
-
-    # Pre-build user lookup hashtable (id → UPN) for O(1) lookups
-    $UserLookup = @{}
-    foreach ($u in $AllEntraIDUsers) {
-        if ($u.id -and $u.userPrincipalName) { $UserLookup[$u.id] = $u.userPrincipalName }
-    }
-
     # Loop through all devices for device data
-    $results = [System.Collections.Generic.List[PSObject]]::new()
+    $results = @()
     $totalDevices = $AllDeviceData.Count
     
     Write-Host "Processing $totalDevices devices..." -ForegroundColor Yellow
@@ -2269,15 +2257,15 @@ function Get-AllDeviceData {
         Write-Progress -Activity "Processing Intune Devices" -Status "Processing device: $($DeviceData.DeviceName)" -CurrentOperation "$currentIndex of $totalDevices devices processed" -PercentComplete $progressPercent
 
         try {
-            # Use bulk-fetched data directly (no per-device re-fetch needed — same $select)
-            $DeviceProperties = $DeviceData
+            # Get detailed device properties
+            $DeviceProperties = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceManagement/manageddevices/$($DeviceData.id)?`$select=$($Properties -join ',')" -ErrorAction Stop
             
-            # Process Autopilot information via pre-built hashtable
-            $AutopilotInfo = $AutopilotLookup[$DeviceData.SerialNumber]
-            $HashUploaded = $AutopilotLookup.ContainsKey($DeviceData.SerialNumber)
+            # Process Autopilot information
+            $AutopilotInfo = $AutopilotDevices | Where-Object { $_.serialnumber -eq $DeviceData.SerialNumber } 
+            $HashUploaded = $DeviceData.Serialnumber -in $AutopilotDevices.serialnumber
 
             # Initialize compliance rule variables
-            $allRules = [System.Collections.Generic.List[string]]::new()
+            $allRules = @()
             $uniqueRules = @()
 
             # Check if device is compliant or not. If not compliant, get compliance rule details
@@ -2296,7 +2284,7 @@ function Get-AllDeviceData {
                                     # Add individual rule settings to the collection
                                     foreach ($ruleDetail in $ruleDetails) {
                                         if ($ruleDetail.setting) {
-                                            $allRules.Add($ruleDetail.setting)
+                                            $allRules += $ruleDetail.setting
                                         }
                                     }
                                 }
@@ -2315,12 +2303,19 @@ function Get-AllDeviceData {
 
             # Check if all logged in user ID's still exist in Microsoft Entra ID
             $LoggedInUsers = $DeviceProperties.usersLoggedOn.userId | Select-Object -Unique
-            $ExistingLoggedInUsers = [System.Collections.Generic.List[string]]::new()
+            $ExistingLoggedInUsers = @()
 
             if ($LoggedInUsers) {
                 foreach ($user in $LoggedInUsers) {
-                    if ($UserLookup.ContainsKey($user)) {
-                        $ExistingLoggedInUsers.Add($UserLookup[$user])
+                    if ($user -in $AllEntraIDUsers.Id) {
+                        try {
+                            $userPrincipalName = (Invoke-MgGraphRequest -Uri "/beta/users/$user" -ErrorAction SilentlyContinue).userprincipalname
+                            if ($userPrincipalName) {
+                                $ExistingLoggedInUsers += $userPrincipalName
+                            }
+                        } catch {
+                            Write-Verbose "Failed to get user details for ID $user $_"
+                        }
                     }
                 }
             }
@@ -2341,7 +2336,7 @@ function Get-AllDeviceData {
             # Access hardware information with null checking
             $hardwareInfo = $DeviceProperties.hardwareInformation
 
-            $results.Add([PSCustomObject][ordered]@{
+            $results += [PSCustomObject][ordered]@{
                 Customer                   = $TenantName
                 DeviceName                 = $DeviceProperties.DeviceName
                 DeviceOwnership            = $DeviceProperties.ManagedDeviceOwnerType
@@ -2377,7 +2372,7 @@ function Get-AllDeviceData {
                 # **FIX**: Use unique rules to prevent duplicates
                 NoncompliantBasedOn        = if ($uniqueRules) { $uniqueRules -join ', ' } else { "" }
                 NoncompliantAlert          = if ($uniqueRules) { ($uniqueRules | Where-Object { $_ -notin $FilteredForAlerting }) -join ', ' } else { "" }
-            })
+            }
         } catch {
             Write-Warning "Error processing device $($DeviceData.DeviceName): $_"
             continue

@@ -14,9 +14,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Scopes required by this report (authorization is handled by Connect-RKGraph)
+$requiredScopes = @('Directory.Read.All', 'PrivilegedEligibilitySchedule.Read.AzureADGroup', 'Organization.Read.All', 'AuditLog.Read.All', 'RoleManagement.Read.Directory', 'Mail.Send', 'RoleAssignmentSchedule.Read.Directory')
 try {
-    $ctx = Get-MgContext -ErrorAction SilentlyContinue
-    if (-not $ctx) { throw 'Not connected to Microsoft Graph. Run Connect-RKGraph first.' }
+    $connected = Invoke-RKSolutionsWithConnection -RequiredScopes $requiredScopes -ParameterSetName 'Interactive' -DebugMode:$DebugMode
+    if (-not $connected) { throw 'Failed to connect to Microsoft Graph API.' }
 
     Invoke-EntraAdminRolesReportCore -SendEmail:$SendEmail -Recipient $Recipient -From $From -ExportPath $ExportPath -DebugMode:$DebugMode
 }
