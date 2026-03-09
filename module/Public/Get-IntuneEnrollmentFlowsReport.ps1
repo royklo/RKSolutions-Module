@@ -40,9 +40,6 @@ function Get-IntuneEnrollmentFlowsReport {
 $ErrorActionPreference = 'Stop'
 
 try {
-    Write-Host 'Intune Assignment Overview (RKSolutions)' -ForegroundColor White
-    Write-Host ''
-
     if (-not $AssignmentOverviewOnly -and [string]::IsNullOrWhiteSpace($Device)) {
         Write-Error "You must specify either -AssignmentOverviewOnly (for assignment overview only) or -Device (for device visualization). Example: Get-IntuneEnrollmentFlowsReport -AssignmentOverviewOnly"
         return
@@ -53,6 +50,8 @@ try {
 
     $tenantInfo = Invoke-MgGraphRequest -Uri 'beta/organization' -Method Get -OutputType PSObject
     $tenantName = $tenantInfo.value[0].displayName
+    Write-Host "Intune Assignment Overview ($tenantName)" -ForegroundColor White
+    Write-Host ''
     Write-Host "Connected to tenant: $tenantName" -ForegroundColor Green
     Write-Host ''
 

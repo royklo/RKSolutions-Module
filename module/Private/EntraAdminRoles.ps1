@@ -2762,7 +2762,7 @@ function Invoke-EntraAdminRolesReportCore {
             if ($DebugMode) { Write-Host "debug: eligibleRoles count: $($eligibleRoles.Count)" -ForegroundColor Magenta }
     
             if ($null -eq $eligibleRoles) {
-                Write-Warning "Unable to collect PIM eligible role assignments. This may be due to missing Microsoft Entra ID Premium P2 license."
+                Write-Warning "Unable to collect PIM eligible role assignments. This MAY be due to missing Microsoft Entra ID Premium P2 license."
                 Write-Host "INFO: Continuing without PIM eligible role assignments..." -ForegroundColor Yellow
                 $eligibleRoles = @() # Set to empty array so the code can continue
             } else {
