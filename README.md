@@ -41,7 +41,7 @@ RK-Solutions-PSModule/
 
 ## Prerequisites
 
-- **PowerShell 5.1+** or **PowerShell 7+** (cross-platform)
+- **PowerShell 7.0 or higher** (Windows, macOS, Linux)
 - **Microsoft.Graph.Authentication** (and other Graph modules as required by the cmdlets)
 - **Microsoft Graph permissions:** App registration in Azure AD / Entra ID with the scopes required by the cmdlets you use. See **[Graph permissions (full list)](docs/PERMISSIONS.md)** for a per-cmdlet breakdown.
 
