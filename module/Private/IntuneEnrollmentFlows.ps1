@@ -6,7 +6,7 @@ $script:AllGroups = @{}
 $script:GroupMemberTypeCache = $null
 
 # Shared helper: convert boolean/null to Yes/No/dash
-$script:ToYesNo = { param($v) if ($null -eq $v) { "—" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
+$script:ToYesNo = { param($v) if ($null -eq $v) { "-" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
 
 # Shared lookup tables for OData assignment type <-> friendly name
 $script:ODataToFriendly = @{
@@ -109,9 +109,9 @@ function Get-AutopilotProfileConfigByDisplayName {
         $autopilotProfile = $profiles | Where-Object { $_.displayName -eq $DisplayName } | Select-Object -First 1
         if (-not $autopilotProfile) { return $null }
         return @{
-            DeviceNameTemplate = if ($autopilotProfile.deviceNameTemplate) { $autopilotProfile.deviceNameTemplate } else { "—" }
-            Language           = if ($autopilotProfile.language) { $autopilotProfile.language } else { "—" }
-            Locale             = if ($autopilotProfile.locale) { $autopilotProfile.locale } else { "—" }
+            DeviceNameTemplate = if ($autopilotProfile.deviceNameTemplate) { $autopilotProfile.deviceNameTemplate } else { "-" }
+            Language           = if ($autopilotProfile.language) { $autopilotProfile.language } else { "-" }
+            Locale             = if ($autopilotProfile.locale) { $autopilotProfile.locale } else { "-" }
         }
     }
     catch { return $null }
@@ -145,8 +145,8 @@ function Get-EspConfigByDisplayName {
         $esp = if ($rawEsp.PSObject.Properties['value']) { $rawEsp.value } else { $rawEsp }
         if (-not $esp) { return $null }
         $toYesNo = $script:ToYesNo
-        $desc = if ($esp.description) { $esp.description } else { "—" }
-        $timeoutVal = $esp.installProgressTimeoutInMinutes; $timeoutMinutes = if ($null -ne $timeoutVal) { [int]$timeoutVal } else { $null }; $timeoutDisplay = if ($null -ne $timeoutMinutes) { "$timeoutMinutes" } else { "—" }
+        $desc = if ($esp.description) { $esp.description } else { "-" }
+        $timeoutVal = $esp.installProgressTimeoutInMinutes; $timeoutMinutes = if ($null -ne $timeoutVal) { [int]$timeoutVal } else { $null }; $timeoutDisplay = if ($null -ne $timeoutMinutes) { "$timeoutMinutes" } else { "-" }
         $showProgressVal = $esp.showInstallationProgress; $showProgress = & $toYesNo $showProgressVal
         $trackVal = $esp.trackInstallProgressForAutopilotOnly; $trackAutopilotOnly = & $toYesNo $trackVal
         $qualityVal = $esp.installQualityUpdates; $installQuality = & $toYesNo $qualityVal
@@ -154,7 +154,7 @@ function Get-EspConfigByDisplayName {
         $allowUseVal = $esp.allowDeviceUseOnInstallFailure; $allowUse = & $toYesNo $allowUseVal
         $allowLogVal = $esp.allowLogCollectionOnInstallFailure; $allowLog = & $toYesNo $allowLogVal
         $allowNonBlockVal = $esp.allowNonBlockingAppInstallation; $allowNonBlocking = & $toYesNo $allowNonBlockVal
-        $customErr = if ($esp.customErrorMessage) { $esp.customErrorMessage.Trim() } else { "" }; $customErrorMessage = if ($customErr) { $customErr } else { "—" }
+        $customErr = if ($esp.customErrorMessage) { $esp.customErrorMessage.Trim() } else { "" }; $customErrorMessage = if ($customErr) { $customErr } else { "-" }
         $showCustomMessage = if ($customErr) { "Yes" } else { "No" }
         $selectedIds = [System.Collections.ArrayList]::new()
         $rawSelected = if ($esp.PSObject.Properties['selectedMobileAppIds']) { $esp.selectedMobileAppIds } elseif ($esp.PSObject.Properties['SelectedMobileAppIds']) { $esp.SelectedMobileAppIds } else { $null }
@@ -505,8 +505,8 @@ function Get-DetailedPolicyAssignmentsFromExpanded {
     return $detailedAssignments
 }
 
-# Cloud PC policies: Use the same approach as manual calls: (1) GET policy?$expand=assignments with default SDK response so assignments is Hashtable like { 28f33e7b-... }; (2) each key is the group ID — GET groups/{id} for displayName/rule. No -OutputType Json so we get the native Hashtable.
-# Normalize a group so membershipRule is only set for Dynamic groups (Assigned groups may have license info in membershipRule from API — we show empty).
+# Cloud PC policies: Use the same approach as manual calls: (1) GET policy?$expand=assignments with default SDK response so assignments is Hashtable like { 28f33e7b-... }; (2) each key is the group ID - GET groups/{id} for displayName/rule. No -OutputType Json so we get the native Hashtable.
+# Normalize a group so membershipRule is only set for Dynamic groups (Assigned groups may have license info in membershipRule from API - we show empty).
 function Normalize-EntraGroupForDisplay {
     param([Parameter(Mandatory)][object]$Group)
     if (-not $Group) { return $null }
@@ -748,14 +748,14 @@ function Get-CloudPCUserSettingsConfigByDisplayName {
         
         $toYesNo = $script:ToYesNo
         
-        $name = if ($policy.displayName) { $policy.displayName } else { "—" }
+        $name = if ($policy.displayName) { $policy.displayName } else { "-" }
         $selfServiceEnabled = & $toYesNo $policy.selfServiceEnabled
         $localAdminEnabled = & $toYesNo $policy.localAdminEnabled
         $resetEnabled = & $toYesNo $policy.resetEnabled
         
         # Restore Point Settings
         $restorePointSetting = $policy.restorePointSetting
-        $frequencyType = "—"
+        $frequencyType = "-"
         if ($restorePointSetting -and $restorePointSetting.frequencyType) {
             $freqType = $restorePointSetting.frequencyType
             $frequencyType = switch ($freqType) {
@@ -771,12 +771,12 @@ function Get-CloudPCUserSettingsConfigByDisplayName {
                 default { $freqType }
             }
         }
-        $userRestoreEnabled = if ($restorePointSetting -and $null -ne $restorePointSetting.userRestoreEnabled) { & $toYesNo $restorePointSetting.userRestoreEnabled } else { "—" }
+        $userRestoreEnabled = if ($restorePointSetting -and $null -ne $restorePointSetting.userRestoreEnabled) { & $toYesNo $restorePointSetting.userRestoreEnabled } else { "-" }
         
         # Cross Region Disaster Recovery Settings
         $drSetting = $policy.crossRegionDisasterRecoverySetting
         $drEnabled = "None"
-        $userInitiatedDRAllowed = "—"
+        $userInitiatedDRAllowed = "-"
         if ($drSetting) {
             if ($drSetting.crossRegionDisasterRecoveryEnabled -eq $true) {
                 $drEnabled = "Enabled"
@@ -786,7 +786,7 @@ function Get-CloudPCUserSettingsConfigByDisplayName {
         
         # Notification Settings
         $notificationSetting = $policy.notificationSetting
-        $restartPromptsDisabled = if ($notificationSetting -and $null -ne $notificationSetting.restartPromptsDisabled) { & $toYesNo $notificationSetting.restartPromptsDisabled } else { "—" }
+        $restartPromptsDisabled = if ($notificationSetting -and $null -ne $notificationSetting.restartPromptsDisabled) { & $toYesNo $notificationSetting.restartPromptsDisabled } else { "-" }
         
         return @{
             Name = $name
@@ -912,7 +912,7 @@ function Get-CloudPCPolicyGroupInfoInternal {
     if (-not $policyDisplayName) { $policyDisplayName = "Policy $PolicyId" }
     if ($groupIds.Count -eq 0) { 
         if ($DebugMode) { Write-Host "          [DEBUG] No group IDs found. Returning 'Not Assigned'" -ForegroundColor DarkYellow }
-        return [PSCustomObject]@{ PolicyId = $PolicyId; PolicyName = $policyDisplayName; GroupId = $null; GroupName = 'Not Assigned'; GroupType = '—'; MembershipRule = '—' } 
+        return [PSCustomObject]@{ PolicyId = $PolicyId; PolicyName = $policyDisplayName; GroupId = $null; GroupName = 'Not Assigned'; GroupType = '-'; MembershipRule = '-' } 
     }
     
     $results = @()
@@ -929,7 +929,7 @@ function Get-CloudPCPolicyGroupInfoInternal {
         }
         if (-not $group) { 
             if ($DebugMode) { Write-Host "          [DEBUG] Adding assignment with group ID only (lookup failed)" -ForegroundColor DarkGray }
-            $results += [PSCustomObject]@{ PolicyId = $PolicyId; PolicyName = $policyDisplayName; GroupId = $gid; GroupName = "Group (ID: $gid)"; GroupType = '—'; MembershipRule = '—' }
+            $results += [PSCustomObject]@{ PolicyId = $PolicyId; PolicyName = $policyDisplayName; GroupId = $gid; GroupName = "Group (ID: $gid)"; GroupType = '-'; MembershipRule = '-' }
             continue 
         }
         $normalized = Normalize-EntraGroupForDisplay -Group $group
@@ -2052,23 +2052,23 @@ function Get-ArchitectureDiagramFragment {
         }
     }
     $deviceEnc = [System.Net.WebUtility]::HtmlEncode($DeviceName)
-    $intuneIdEnc = if ($IntuneDeviceId) { [System.Net.WebUtility]::HtmlEncode($IntuneDeviceId) } else { "—" }
-    $entraIdEnc = if ($EntraDeviceId) { [System.Net.WebUtility]::HtmlEncode($EntraDeviceId) } else { "—" }
+    $intuneIdEnc = if ($IntuneDeviceId) { [System.Net.WebUtility]::HtmlEncode($IntuneDeviceId) } else { "-" }
+    $entraIdEnc = if ($EntraDeviceId) { [System.Net.WebUtility]::HtmlEncode($EntraDeviceId) } else { "-" }
     $deviceTableRow = "<tr><td class=`"arch-group-cell`">$deviceEnc</td><td class=`"arch-group-cell`">$intuneIdEnc</td><td class=`"arch-group-cell`">$entraIdEnc</td></tr>"
     $groupTableRows = ""
     if (-not $DeviceGroupDetails -or $DeviceGroupDetails.Count -eq 0) {
-        $groupTableRows = "<tr><td class=`"arch-group-cell`" colspan=`"3`">—</td></tr>"
+        $groupTableRows = "<tr><td class=`"arch-group-cell`" colspan=`"3`">-</td></tr>"
     }
     else {
         foreach ($gd in $DeviceGroupDetails) {
             $encName = [System.Net.WebUtility]::HtmlEncode($gd.DisplayName)
             $encType = [System.Net.WebUtility]::HtmlEncode($gd.GroupType)
-            $ruleCell = if ($gd.MembershipRule) { $gd.MembershipRule } else { "—" }
+            $ruleCell = if ($gd.MembershipRule) { $gd.MembershipRule } else { "-" }
             $groupTableRows += "<tr><td class=`"arch-group-cell`">$encName</td><td class=`"arch-group-type`">$encType</td><td class=`"arch-group-rule`">$ruleCell</td></tr>"
         }
     }
-    $autopilotName = if ($autopilotPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($autopilotPolicies[0]) } else { "— None —" }
-    $espName = if ($espPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($espPolicies[0]) } else { "— None —" }
+    $autopilotName = if ($autopilotPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($autopilotPolicies[0]) } else { "- None -" }
+    $espName = if ($espPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($espPolicies[0]) } else { "- None -" }
     $cloudPCSuffix = if ($IsCloudPC) { ", Cloud PC Prov($($cloudPCProvisioningPolicies.Count)), Cloud PC User($($cloudPCUserSettingsPolicies.Count))" } else { "" }
     $deviceSetupSub = "Configuration($($configDevicePolicies.Count)), Security Baselines($($securityBaselineDevicePolicies.Count)), Compliance($($complianceDevicePolicies.Count)), Apps($($appDevicePolicies.Count))$cloudPCSuffix"
     $accountSetupSub = "Configuration($($configUserPolicies.Count)), Security Baselines($($securityBaselineUserPolicies.Count)), Compliance($($complianceUserPolicies.Count)), Apps($($appUserPolicies.Count))$cloudPCSuffix"
@@ -2106,7 +2106,7 @@ function Get-ArchitectureDiagramFragment {
 "@)
     [void]$sb.AppendLine('<div class="arch-arrow" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>')
     if ($IsCloudPC) {
-        $cloudPCProvName = if ($cloudPCProvisioningPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($cloudPCProvisioningPolicies[0]) } else { "— None —" }
+        $cloudPCProvName = if ($cloudPCProvisioningPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($cloudPCProvisioningPolicies[0]) } else { "- None -" }
         [void]$sb.AppendLine(@"
 <div class="arch-step arch-step-cloudpc-provisioning" style="--arch-fill:#0369a1;">
 <div class="arch-step-title">Cloud PC Provisioning</div>
@@ -2240,11 +2240,11 @@ function Get-AppliedFlowHtmlFragment {
     }
     $deviceEnc = [System.Net.WebUtility]::HtmlEncode($DeviceName)
     function Get-FirstAssignmentAndFilter($policyName, [array]$eval) {
-        if (-not $eval -or $eval.Count -eq 0) { return @("—", "—") }
+        if (-not $eval -or $eval.Count -eq 0) { return @("-", "-") }
         # Prefer a row with a real assignment (so Cloud PC / others show target when both "Not Assigned" and assigned rows exist)
         $a = $eval | Where-Object { $_.PolicyName -eq $policyName -and $_.AssignmentType -ne "Not Assigned" } | Select-Object -First 1
         if (-not $a) { $a = $eval | Where-Object { $_.PolicyName -eq $policyName } | Select-Object -First 1 }
-        if (-not $a) { return @("—", "—") }
+        if (-not $a) { return @("-", "-") }
         $target = if ($a.AssignmentType -match "^(All Devices|All Users)$") { $a.AssignmentType } else { $a.TargetName }
         $filterD = "No Filter"
         if ($a.FilterName -and $a.FilterName -ne "No Filter" -and $a.FilterName -ne "Filter Not Found") {
@@ -2269,12 +2269,12 @@ function Get-AppliedFlowHtmlFragment {
         return @($target, $filterD)
     }
     function Get-FirstAssignmentGroupTypeRule($policyName, [array]$eval) {
-        if (-not $eval -or $eval.Count -eq 0) { return @("Not Assigned", "—", "No Filter") }
+        if (-not $eval -or $eval.Count -eq 0) { return @("Not Assigned", "-", "No Filter") }
         $a = $eval | Where-Object { $_.PolicyName -eq $policyName -and $_.AssignmentType -ne "Not Assigned" } | Select-Object -First 1
         if (-not $a) { $a = $eval | Where-Object { $_.PolicyName -eq $policyName } | Select-Object -First 1 }
-        if (-not $a) { return @("Not Assigned", "—", "No Filter") }
+        if (-not $a) { return @("Not Assigned", "-", "No Filter") }
         $groupName = if ($a.AssignmentType -match "^(All Devices|All Users)$") { $a.AssignmentType } else { $a.TargetName }
-        $typeLabel = "—"
+        $typeLabel = "-"
         $rule = if ($a.FilterName -and $a.FilterName -ne "No Filter" -and $a.FilterName -ne "Filter Not Found") { $a.FilterName } else { "No Filter" }
         if ($a.GroupId -and $script:AllGroups.Count -gt 0) {
             $grp = $script:AllGroups[$a.GroupId]
@@ -2283,7 +2283,7 @@ function Get-AppliedFlowHtmlFragment {
                 $isDynamic = $grp.groupTypes -and (@($grp.groupTypes) -contains 'DynamicMembership')
                 $typeLabel = if ($isDynamic) { "Dynamic" } else { "Static" }
                 # Only show membership rule for Dynamic groups; for Static use empty
-                if ($isDynamic -and $grp.membershipRule) { $rule = $grp.membershipRule } else { $rule = "—" }
+                if ($isDynamic -and $grp.membershipRule) { $rule = $grp.membershipRule } else { $rule = "-" }
             }
         }
         return @($groupName, $typeLabel, $rule)
@@ -2347,7 +2347,7 @@ function Get-AppliedFlowHtmlFragment {
     function Write-FlowStepLikeReference($stepId, $stepClass, $title, $iconClass, $list, [array]$eval, $stepNameLabel, $categoryTitle, $col1Header, [string]$ConfigSectionHtml = "", [switch]$UseGroupTypeRuleTable) {
         $t = [System.Net.WebUtility]::HtmlEncode($title)
         $n = $list.Count
-        $stepName = if ($list.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($list[0]) } else { "— None —" }
+        $stepName = if ($list.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($list[0]) } else { "- None -" }
         # Don't show step-name for any policy type - it's redundant with the header and button
         $stepNameLine = ""
         $btnText = if ($stepId -eq "flow-autopilot") { "Expand Autopilot Profile Details" } elseif ($stepId -eq "flow-esp") { "Expand Enrollment Status Page Configuration" } else { "Expand " + $title + " (" + $n + ")" }
@@ -2366,9 +2366,9 @@ $ConfigSectionHtml
 "@
     }
     $autopilotConfig = if ($autopilotPolicies.Count -gt 0) { Get-AutopilotProfileConfigByDisplayName -DisplayName $autopilotPolicies[0] } else { $null }
-    $apDeviceName = if ($autopilotConfig) { [System.Net.WebUtility]::HtmlEncode($autopilotConfig.DeviceNameTemplate) } else { "—" }
-    $apLanguage = if ($autopilotConfig) { [System.Net.WebUtility]::HtmlEncode($autopilotConfig.Language) } else { "—" }
-    $apLocale = if ($autopilotConfig) { [System.Net.WebUtility]::HtmlEncode($autopilotConfig.Locale) } else { "—" }
+    $apDeviceName = if ($autopilotConfig) { [System.Net.WebUtility]::HtmlEncode($autopilotConfig.DeviceNameTemplate) } else { "-" }
+    $apLanguage = if ($autopilotConfig) { [System.Net.WebUtility]::HtmlEncode($autopilotConfig.Language) } else { "-" }
+    $apLocale = if ($autopilotConfig) { [System.Net.WebUtility]::HtmlEncode($autopilotConfig.Locale) } else { "-" }
     $autopilotConfigSection = @"
 <div class=`"autopilot-config-section`">
 <button class=`"btn btn-outline-secondary btn-sm config-toggle`" type=`"button`" data-bs-toggle=`"collapse`" data-bs-target=`"#autopilotConfig-0`" aria-expanded=`"false`" aria-controls=`"autopilotConfig-0`"><i class=`"fas fa-chevron-down me-2`"></i>Show Configuration Details</button>
@@ -2382,8 +2382,8 @@ $ConfigSectionHtml
 </div>
 "@
     $espConfig = if ($espPolicies.Count -gt 0) { Get-EspConfigByDisplayName -DisplayName $espPolicies[0] } else { $null }
-    $espDesc = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.Description) } else { "—" }
-    $espShowProgress = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.ShowInstallationProgress) } else { "—" }
+    $espDesc = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.Description) } else { "-" }
+    $espShowProgress = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.ShowInstallationProgress) } else { "-" }
     $espRequiredAppsMode = "All"
     $espSelectedAppsHtml = ""
     $selectedAppIds = @()
@@ -2404,16 +2404,16 @@ $ConfigSectionHtml
     $espRequiredAppsModeEnc = [System.Net.WebUtility]::HtmlEncode($espRequiredAppsMode)
     $espBlockDeviceUseHtml = "<dt>Block device use until required apps are installed if they are assigned to the user/device:</dt><dd>$espRequiredAppsModeEnc</dd>"
     if ($espRequiredAppsMode -eq "Selected") { $espBlockDeviceUseHtml += $espSelectedAppsHtml }
-    $espTimeout = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.InstallProgressTimeout) } else { "—" }
-    $espShowCustomMessage = if ($espConfig -and $espConfig.ShowCustomMessageWhenError) { [System.Net.WebUtility]::HtmlEncode($espConfig.ShowCustomMessageWhenError) } else { "—" }
-    $espCustomErrorMessage = if ($espConfig -and $espConfig.CustomErrorMessage) { [System.Net.WebUtility]::HtmlEncode($espConfig.CustomErrorMessage) } else { "—" }
-    $espAllowLog = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowLogCollectionOnFailure) } else { "—" }
-    $espTrackAutopilot = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.TrackAutopilotOnly) } else { "—" }
-    $espQuality = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.InstallQualityUpdates) } else { "—" }
-    $espBlockUntilAll = if ($espConfig -and $espConfig.ShowInstallationProgress) { [System.Net.WebUtility]::HtmlEncode($espConfig.ShowInstallationProgress) } else { "—" }
-    $espAllowReset = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowDeviceResetOnFailure) } else { "—" }
-    $espAllowUse = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowDeviceUseOnFailure) } else { "—" }
-    $espAllowNonBlock = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowNonBlockingAppInstallation) } else { "—" }
+    $espTimeout = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.InstallProgressTimeout) } else { "-" }
+    $espShowCustomMessage = if ($espConfig -and $espConfig.ShowCustomMessageWhenError) { [System.Net.WebUtility]::HtmlEncode($espConfig.ShowCustomMessageWhenError) } else { "-" }
+    $espCustomErrorMessage = if ($espConfig -and $espConfig.CustomErrorMessage) { [System.Net.WebUtility]::HtmlEncode($espConfig.CustomErrorMessage) } else { "-" }
+    $espAllowLog = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowLogCollectionOnFailure) } else { "-" }
+    $espTrackAutopilot = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.TrackAutopilotOnly) } else { "-" }
+    $espQuality = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.InstallQualityUpdates) } else { "-" }
+    $espBlockUntilAll = if ($espConfig -and $espConfig.ShowInstallationProgress) { [System.Net.WebUtility]::HtmlEncode($espConfig.ShowInstallationProgress) } else { "-" }
+    $espAllowReset = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowDeviceResetOnFailure) } else { "-" }
+    $espAllowUse = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowDeviceUseOnFailure) } else { "-" }
+    $espAllowNonBlock = if ($espConfig) { [System.Net.WebUtility]::HtmlEncode($espConfig.AllowNonBlockingAppInstallation) } else { "-" }
     $espRestHtml = ""
     if ($espShowProgress -ne "No") {
         $espBlockDeviceUseHtmlSafe = $espBlockDeviceUseHtml -replace '"', '`"'
@@ -2448,12 +2448,12 @@ $espRestHtml
         $cloudPCPolicy = Get-CloudPCProvisioningConfigByDisplayName -DisplayName $cloudPCProvisioningMerged[0]
         if ($cloudPCPolicy) {
             $toYesNo = $script:ToYesNo
-            $cpName = if ($cloudPCPolicy.displayName) { [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.displayName) } else { "—" }
+            $cpName = if ($cloudPCPolicy.displayName) { [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.displayName) } else { "-" }
             $cpExperience = if ($cloudPCPolicy.userExperienceType -eq 'cloudPc') { "Access a full Cloud PC desktop" } else { [System.Net.WebUtility]::HtmlEncode([string]$cloudPCPolicy.userExperienceType) }
             $cpLicense = if ($cloudPCPolicy.managedBy -eq 'windows365') { "Enterprise" } else { [System.Net.WebUtility]::HtmlEncode([string]$cloudPCPolicy.managedBy) }
             $cpSso = & $toYesNo $cloudPCPolicy.enableSingleSignOn
-            $cpJoinType = "—"
-            $cpGeo = "—"
+            $cpJoinType = "-"
+            $cpGeo = "-"
             if ($cloudPCPolicy.domainJoinConfigurations -and @($cloudPCPolicy.domainJoinConfigurations).Count -gt 0) {
                 $djc = @($cloudPCPolicy.domainJoinConfigurations)[0]
                 $cpJoinType = if ($djc.type -eq 'azureADJoin') { "Microsoft Entra Join" } else { [System.Net.WebUtility]::HtmlEncode([string]$djc.type) }
@@ -2467,13 +2467,13 @@ $espRestHtml
                 $it = [string]$cloudPCPolicy.imageType
                 $itEnc = if ($it.Length -gt 0) { $it.Substring(0, 1).ToUpper() + $it.Substring(1) } else { $it }
                 [System.Net.WebUtility]::HtmlEncode($itEnc)
-            } else { "—" }
-            $cpImageName = if ($cloudPCPolicy.imageDisplayName) { [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.imageDisplayName) } else { "—" }
-            $cpLang = "—"
+            } else { "-" }
+            $cpImageName = if ($cloudPCPolicy.imageDisplayName) { [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.imageDisplayName) } else { "-" }
+            $cpLang = "-"
             if ($cloudPCPolicy.windowsSettings -and $cloudPCPolicy.windowsSettings.language) { $cpLang = [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.windowsSettings.language) }
             elseif ($cloudPCPolicy.windowsSetting -and $cloudPCPolicy.windowsSetting.locale) { $cpLang = [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.windowsSetting.locale) }
             $cpApplyNameTemplate = & $toYesNo ($cloudPCPolicy.cloudPcNamingTemplate -and [string]$cloudPCPolicy.cloudPcNamingTemplate.Trim().Length -gt 0)
-            $cpNameTemplate = if ($cloudPCPolicy.cloudPcNamingTemplate) { [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.cloudPcNamingTemplate) } else { "—" }
+            $cpNameTemplate = if ($cloudPCPolicy.cloudPcNamingTemplate) { [System.Net.WebUtility]::HtmlEncode($cloudPCPolicy.cloudPcNamingTemplate) } else { "-" }
             $cpScopeIds = if ($cloudPCPolicy.scopeIds -and @($cloudPCPolicy.scopeIds).Count -gt 0) {
                 $scopeParts = $cloudPCPolicy.scopeIds | ForEach-Object { if ($_ -eq '0') { 'Default' } else { $_ } }
                 [System.Net.WebUtility]::HtmlEncode(($scopeParts -join ', '))
@@ -2527,7 +2527,7 @@ $espRestHtml
         }
         else {
             $cloudPCProvisioningDeviceGroupsCount = 0
-            $cloudPCProvisioningDeviceGroupsHtml = '<div class="policy-table-header policy-table-header-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="header-policy-name">Policy name</div><div class="header-assignment">Group name</div><div class="header-type">Type</div><div class="header-filter">Membership rule</div></div><div class="policy-item policy-item-devicegroups policy-item-stacked" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">— None —</span></div><div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">—</span></div><div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">—</span></div><div class="policy-filter"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">—</span></div></div>'
+            $cloudPCProvisioningDeviceGroupsHtml = '<div class="policy-table-header policy-table-header-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="header-policy-name">Policy name</div><div class="header-assignment">Group name</div><div class="header-type">Type</div><div class="header-filter">Membership rule</div></div><div class="policy-item policy-item-devicegroups policy-item-stacked" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">- None -</span></div><div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">-</span></div><div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">-</span></div><div class="policy-filter"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">-</span></div></div>'
         }
     }
     
@@ -2536,15 +2536,15 @@ $espRestHtml
     if ($cloudPCUserSettingsMerged.Count -gt 0) {
         $cloudPCUserSettings = Get-CloudPCUserSettingsConfigByDisplayName -DisplayName $cloudPCUserSettingsMerged[0]
         if ($cloudPCUserSettings) {
-            $usName = if ($cloudPCUserSettings.Name) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.Name) } else { "—" }
-            $usSelfService = if ($cloudPCUserSettings.SelfServiceEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.SelfServiceEnabled) } else { "—" }
-            $usLocalAdmin = if ($cloudPCUserSettings.LocalAdminEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.LocalAdminEnabled) } else { "—" }
-            $usReset = if ($cloudPCUserSettings.ResetEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.ResetEnabled) } else { "—" }
-            $usRestoreFreq = if ($cloudPCUserSettings.RestorePointFrequency) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.RestorePointFrequency) } else { "—" }
-            $usUserRestore = if ($cloudPCUserSettings.UserRestoreEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.UserRestoreEnabled) } else { "—" }
-            $usDisasterRecovery = if ($cloudPCUserSettings.DisasterRecoveryEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.DisasterRecoveryEnabled) } else { "—" }
-            $usUserInitiatedDR = if ($cloudPCUserSettings.UserInitiatedDRAllowed) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.UserInitiatedDRAllowed) } else { "—" }
-            $usRestartPrompts = if ($cloudPCUserSettings.RestartPromptsDisabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.RestartPromptsDisabled) } else { "—" }
+            $usName = if ($cloudPCUserSettings.Name) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.Name) } else { "-" }
+            $usSelfService = if ($cloudPCUserSettings.SelfServiceEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.SelfServiceEnabled) } else { "-" }
+            $usLocalAdmin = if ($cloudPCUserSettings.LocalAdminEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.LocalAdminEnabled) } else { "-" }
+            $usReset = if ($cloudPCUserSettings.ResetEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.ResetEnabled) } else { "-" }
+            $usRestoreFreq = if ($cloudPCUserSettings.RestorePointFrequency) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.RestorePointFrequency) } else { "-" }
+            $usUserRestore = if ($cloudPCUserSettings.UserRestoreEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.UserRestoreEnabled) } else { "-" }
+            $usDisasterRecovery = if ($cloudPCUserSettings.DisasterRecoveryEnabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.DisasterRecoveryEnabled) } else { "-" }
+            $usUserInitiatedDR = if ($cloudPCUserSettings.UserInitiatedDRAllowed) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.UserInitiatedDRAllowed) } else { "-" }
+            $usRestartPrompts = if ($cloudPCUserSettings.RestartPromptsDisabled) { [System.Net.WebUtility]::HtmlEncode($cloudPCUserSettings.RestartPromptsDisabled) } else { "-" }
             $cloudPCUserSettingsConfigSection = @"
 <div class=`"esp-config-section cloudpc-usersettings-config-section`">
 <button class=`"btn btn-outline-secondary btn-sm config-toggle`" type=`"button`" data-bs-toggle=`"collapse`" data-bs-target=`"#cloudpcUserSettingsConfig-0`" aria-expanded=`"false`" aria-controls=`"cloudpcUserSettingsConfig-0`"><i class=`"fas fa-chevron-down me-2`"></i>Show Configuration Details</button>
@@ -2593,7 +2593,7 @@ $espRestHtml
         }
         else {
             $cloudPCUserSettingsDeviceGroupsCount = 0
-            $cloudPCUserSettingsDeviceGroupsHtml = '<div class="policy-table-header policy-table-header-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="header-policy-name">Policy name</div><div class="header-assignment">Group name</div><div class="header-type">Type</div><div class="header-filter">Membership rule</div></div><div class="policy-item policy-item-devicegroups policy-item-stacked" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">— None —</span></div><div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">—</span></div><div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">—</span></div><div class="policy-filter"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">—</span></div></div>'
+            $cloudPCUserSettingsDeviceGroupsHtml = '<div class="policy-table-header policy-table-header-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="header-policy-name">Policy name</div><div class="header-assignment">Group name</div><div class="header-type">Type</div><div class="header-filter">Membership rule</div></div><div class="policy-item policy-item-devicegroups policy-item-stacked" style="grid-template-columns: 2fr 2fr 1fr 3fr;"><div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">- None -</span></div><div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">-</span></div><div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">-</span></div><div class="policy-filter"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">-</span></div></div>'
         }
         $cloudPCDeviceGroupsCount = $cloudPCProvisioningDeviceGroupsCount
         $cloudPCDeviceGroupsHtml = $cloudPCProvisioningDeviceGroupsHtml
@@ -2630,9 +2630,9 @@ $userTable
     $entraGroupTableHeader = '<div class="policy-table-header policy-table-header-devicegroups" style="grid-template-columns: 2fr 1fr 3fr;"><div class="header-policy-name">Group name</div><div class="header-assignment">Type</div><div class="header-filter">Membership rule</div></div>'
     if ($entraCount -gt 0) {
         foreach ($gd in $DeviceGroupDetails) {
-            $name = if ($gd.DisplayName) { $gd.DisplayName } else { "—" }
+            $name = if ($gd.DisplayName) { $gd.DisplayName } else { "-" }
             $gType = if ($gd.GroupType) { $gd.GroupType } else { "Static" }
-            $ruleHtml = if ($gd.MembershipRule) { $gd.MembershipRule } else { "—" }
+            $ruleHtml = if ($gd.MembershipRule) { $gd.MembershipRule } else { "-" }
             $encName = [System.Net.WebUtility]::HtmlEncode($name)
             $encType = [System.Net.WebUtility]::HtmlEncode($gType)
             $entraGroupListHtml += '<div class="policy-item policy-item-devicegroups" style="grid-template-columns: 2fr 1fr 3fr;">'
@@ -2643,7 +2643,7 @@ $userTable
         }
     }
     else {
-        $entraGroupListHtml = '<div class="policy-item policy-item-devicegroups policy-item-stacked" style="grid-template-columns: 2fr 1fr 3fr;"><div class="policy-name"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">— None —</span></div><div class="policy-assignment"><span class="flow-field-label">Type</span><br><span class="flow-field-value">—</span></div><div class="policy-filter"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">—</span></div></div>'
+        $entraGroupListHtml = '<div class="policy-item policy-item-devicegroups policy-item-stacked" style="grid-template-columns: 2fr 1fr 3fr;"><div class="policy-name"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">- None -</span></div><div class="policy-assignment"><span class="flow-field-label">Type</span><br><span class="flow-field-value">-</span></div><div class="policy-filter"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">-</span></div></div>'
     }
     $entraGroupListHtml = $entraGroupTableHeader + $entraGroupListHtml
     $entraStepHtml = @"
