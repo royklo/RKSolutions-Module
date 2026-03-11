@@ -4,7 +4,19 @@
 
 # Require PowerShell 7.0 or higher
 if ($PSVersionTable.PSVersion.Major -lt 7) {
-    throw "RKSolutions module requires PowerShell 7.0 or higher. Current version: $($PSVersionTable.PSVersion). Please install PowerShell 7: https://aka.ms/powershell"
+    $msg = @"
+
+RKSolutions module requires PowerShell 7.0 or higher.
+Current version: $($PSVersionTable.PSVersion)
+
+You are running Windows PowerShell (powershell.exe).
+Please use PowerShell 7 (pwsh.exe) instead.
+
+Install PowerShell 7: https://aka.ms/powershell
+After installing, run: pwsh
+
+"@
+    throw $msg
 }
 
 $moduleRoot = $PSScriptRoot

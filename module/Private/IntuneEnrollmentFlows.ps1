@@ -525,7 +525,7 @@ function Get-CloudPCPolicyWithAssignments {
     param([Parameter(Mandatory)][string]$EntityType, [Parameter(Mandatory)][string]$EntityId, [switch]$DebugMode)
     $baseUri = "https://graph.microsoft.com/beta/deviceManagement/$EntityType/$EntityId"
     $policy = $null
-    # User's approach: GET with expand (no -OutputType Json) → assignments may be Hashtable { groupId } = value, or PSCustomObject with GUID-named properties.
+    # User's approach: GET with expand (no -OutputType Json) -> assignments may be Hashtable { groupId } = value, or PSCustomObject with GUID-named properties.
     try {
         $policy = Invoke-MgGraphRequest -Uri ($baseUri + "?`$expand=assignments") -Method GET -ErrorAction Stop
         if (-not $policy) { }
@@ -987,7 +987,7 @@ function Get-AllPolicyAssignmentsBatch {
                     # Intents created from a template (templateId set) = Security Baseline; others = Endpoint Security
                     $effectiveCategory = $policyType.Name
                     if ($policyType.EntityType -eq "deviceManagement/intents" -and $policy.templateId) { $effectiveCategory = "Security Baselines" }
-                    # Settings Catalog policies that are security baseline / version monitoring → show under Security Baselines in Overview
+                    # Settings Catalog policies that are security baseline / version monitoring -> show under Security Baselines in Overview
                     if ($policyType.EntityType -eq "configurationPolicies") {
                         $nameForMatch = $policyName
                         if (($nameForMatch -match 'Baseline' -and $nameForMatch -match 'Version Monitoring') -or ($nameForMatch -match 'Security Baseline')) { $effectiveCategory = "Security Baselines" }

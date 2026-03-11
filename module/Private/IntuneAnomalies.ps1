@@ -2240,13 +2240,13 @@ function Get-AllDeviceData {
     Write-Host "Fetching Autopilot devices..." -ForegroundColor Yellow
     $AutopilotDevices = (Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeviceIdentities")
 
-    # Pre-build Autopilot lookup hashtable (serialNumber → device object) for O(1) lookups
+    # Pre-build Autopilot lookup hashtable (serialNumber -> device object) for O(1) lookups
     $AutopilotLookup = @{}
     foreach ($ap in $AutopilotDevices) {
         if ($ap.serialNumber) { $AutopilotLookup[$ap.serialNumber] = $ap }
     }
 
-    # Pre-build user lookup hashtable (id → UPN) for O(1) lookups
+    # Pre-build user lookup hashtable (id -> UPN) for O(1) lookups
     $UserLookup = @{}
     foreach ($u in $AllEntraIDUsers) {
         if ($u.id -and $u.userPrincipalName) { $UserLookup[$u.id] = $u.userPrincipalName }
@@ -2269,7 +2269,7 @@ function Get-AllDeviceData {
         Write-Progress -Activity "Processing Intune Devices" -Status "Processing device: $($DeviceData.DeviceName)" -CurrentOperation "$currentIndex of $totalDevices devices processed" -PercentComplete $progressPercent
 
         try {
-            # Use bulk-fetched data directly (no per-device re-fetch needed — same $select)
+            # Use bulk-fetched data directly (no per-device re-fetch needed - same $select)
             $DeviceProperties = $DeviceData
             
             # Process Autopilot information via pre-built hashtable
