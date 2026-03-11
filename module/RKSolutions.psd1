@@ -6,7 +6,7 @@
     CompanyName       = 'RK Solutions'
     Copyright         = '(c) 2026 Roy Klooster - RK Solutions. All rights reserved.'
     Description       = 'PowerShell module consolidating Intune Enrollment Flows, Intune Anomalies, Entra Admin Roles, and M365 License Assignment reports. Connects to Microsoft Graph and generates HTML/CSV reports.'
-    PowerShellVersion = '5.1'
+    PowerShellVersion = '7.0'
     RequiredModules   = @('Microsoft.Graph.Authentication')
     FunctionsToExport = @(
         'Connect-RKGraph',

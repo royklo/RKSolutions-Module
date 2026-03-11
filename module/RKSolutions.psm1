@@ -1,6 +1,12 @@
 # RKSolutions.psm1 - Dot-source Private then Public; export only public functions
 # Private scripts (e.g. IntuneEnrollmentFlows.ps1) may define helper functions (e.g. Get-DeviceEvaluationContext,
 # Get-CloudPCProvisioningPolicyGroupInfo) that are used internally by Public cmdlets but are NOT exported as cmdlets.
+
+# Require PowerShell 7.0 or higher
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    throw "RKSolutions module requires PowerShell 7.0 or higher. Current version: $($PSVersionTable.PSVersion). Please install PowerShell 7: https://aka.ms/powershell"
+}
+
 $moduleRoot = $PSScriptRoot
 
 # Load Private scripts first (shared helpers, then report-specific)
