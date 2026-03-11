@@ -16,7 +16,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     Write-Host "After installing, run: " -ForegroundColor White -NoNewline
     Write-Host "pwsh" -ForegroundColor Green
     Write-Host ""
-    throw "PowerShell 7.0 or higher is required."
+    exit 1
 }
 
 $moduleRoot = $PSScriptRoot
