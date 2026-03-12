@@ -5,11 +5,11 @@ Thank you for your interest in contributing. This project is maintained by Roy K
 ## How to contribute (fork and pull request)
 
 1. **Fork the repository**
-   Click **Fork** on [the GitHub repo](https://github.com/royklo/RK-Solutions-PSModule).
+   Click **Fork** on [the GitHub repo](https://github.com/royklo/RKSolutions-Module).
 2. **Clone your fork**
    ```powershell
-   git clone https://github.com/YOUR_USERNAME/RK-Solutions-PSModule.git
-   cd RK-Solutions-PSModule
+   git clone https://github.com/YOUR_USERNAME/RKSolutions-Module.git
+   cd RKSolutions-Module
    ```
 3. **Create a branch** for your change
    ```powershell
@@ -25,7 +25,7 @@ Thank you for your interest in contributing. This project is maintained by Roy K
    git push origin feature/your-feature-name
    ```
 7. **Open a pull request**
-   Go to the [original repository](https://github.com/royklo/RK-Solutions-PSModule) and open a **New pull request** from your branch. Fill in the PR template (summary of changes, related issue if any, checklist).
+   Go to the [original repository](https://github.com/royklo/RKSolutions-Module) and open a **New pull request** from your branch. Fill in the PR template (summary of changes, related issue if any, checklist).
 
 ## Development setup
 
@@ -39,7 +39,7 @@ Thank you for your interest in contributing. This project is maintained by Roy K
 
 Use the **Bug report** issue template so we get the information we need:
 
-1. Go to [New issue](https://github.com/royklo/RK-Solutions-PSModule/issues/new).
+1. Go to [New issue](https://github.com/royklo/RKSolutions-Module/issues/new).
 2. Choose **Bug report**.
 3. Fill in:
    - **Description** — What went wrong?
@@ -53,7 +53,7 @@ Use the **Bug report** issue template so we get the information we need:
 
 Use the **Feature request** template:
 
-1. Go to [New issue](https://github.com/royklo/RK-Solutions-PSModule/issues/new).
+1. Go to [New issue](https://github.com/royklo/RKSolutions-Module/issues/new).
 2. Choose **Feature request**.
 3. Describe the feature, the use case, and your proposed solution.
 

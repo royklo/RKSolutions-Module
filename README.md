@@ -1,7 +1,7 @@
 # RKSolutions PowerShell Module
 
 [PowerShell Gallery](https://www.powershellgallery.com/packages/RKSolutions)  
-[CI](https://github.com/royklo/RK-Solutions-PSModule/actions)  
+[CI](https://github.com/royklo/RKSolutions-Module/actions)  
 [License: MIT](LICENSE)
 
 PowerShell module for Microsoft Graph–backed reports: Intune Enrollment Flows, Intune Anomalies, Entra Admin Roles, and M365 License Assignment. Connects to Microsoft Graph and generates HTML/CSV reports.
@@ -10,13 +10,13 @@ PowerShell module for Microsoft Graph–backed reports: Intune Enrollment Flows,
 
 This module is maintained by **Roy Klooster** (RK Solutions).
 
-- **Repository:** [https://github.com/royklo/RK-Solutions-PSModule](https://github.com/royklo/RK-Solutions-PSModule)
+- **Repository:** [https://github.com/royklo/RKSolutions-Module](https://github.com/royklo/RKSolutions-Module)
 - **PowerShell Gallery:** [https://www.powershellgallery.com/packages/RKSolutions](https://www.powershellgallery.com/packages/RKSolutions)
 
 ## Repository structure
  
 ```
-RK-Solutions-PSModule/
+RKSolutions-Module/
 ├── README.md                 # This file
 ├── LICENSE                   # MIT
 ├── CONTRIBUTING.md           # How to contribute, fork & PR
@@ -56,8 +56,8 @@ Install-Module -Name RKSolutions -Scope CurrentUser
 ### From source (GitHub)
 
 ```powershell
-git clone https://github.com/royklo/RK-Solutions-PSModule.git
-cd RK-Solutions-PSModule
+git clone https://github.com/royklo/RKSolutions-Module.git
+cd RKSolutions-Module
 Import-Module ./module/RKSolutions.psd1 -Force
 ```
 
@@ -98,8 +98,8 @@ We welcome contributions: fork the repo, make your changes, and open a pull requ
 
 ## Issues
 
-- [Bug report](https://github.com/royklo/RK-Solutions-PSModule/issues/new?template=bug_report.md)
-- [Feature request](https://github.com/royklo/RK-Solutions-PSModule/issues/new?template=feature_request.md)
+- [Bug report](https://github.com/royklo/RKSolutions-Module/issues/new?template=bug_report.md)
+- [Feature request](https://github.com/royklo/RKSolutions-Module/issues/new?template=feature_request.md)
 
 ## License
 
