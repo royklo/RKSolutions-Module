@@ -11,6 +11,7 @@ Use these when registering an app in Azure AD / Entra ID or when calling `Connec
 | Permission | Used by |
 |------------|---------|
 | **AuditLog.Read.All** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
+| **CustomSecAttributeAssignment.Read.All** | Get-CustomSecurityAttributesReport |
 | **CloudLicensing.Read** | Get-M365LicenseAssignmentReport |
 | **CloudPC.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport |
 | **Device.Read.All** | Get-IntuneEnrollmentFlowsReport |
@@ -21,13 +22,13 @@ Use these when registering an app in Azure AD / Entra ID or when calling `Connec
 | **Directory.Read.All** | Get-IntuneAnomaliesReport, Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
 | **Group.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-M365LicenseAssignmentReport |
 | **GroupMember.Read.All** | Get-M365LicenseAssignmentReport |
-| **Mail.Send** | Get-IntuneAnomaliesReport, Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport (optional, for email report) |
-| **Organization.Read.All** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
+| **Mail.Send** | Get-IntuneAnomaliesReport, Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport, Get-CustomSecurityAttributesReport (optional, for email report) |
+| **Organization.Read.All** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport, Get-CustomSecurityAttributesReport |
 | **PrivilegedEligibilitySchedule.Read.AzureADGroup** | Get-EntraAdminRolesReport |
 | **RoleAssignmentSchedule.Read.Directory** | Get-EntraAdminRolesReport |
 | **RoleManagement.Read.Directory** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
 | **User.Read** | Get-IntuneAnomaliesReport (minimum for interactive) |
-| **User.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-M365LicenseAssignmentReport |
+| **User.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-M365LicenseAssignmentReport, Get-CustomSecurityAttributesReport |
 
 ---
 
@@ -54,7 +55,8 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 - PrivilegedEligibilitySchedule.Read.AzureADGroup  
 - Mail.Send  
 - CloudLicensing.Read  
-- CloudPC.Read.All  
+- CloudPC.Read.All
+- CustomSecAttributeAssignment.Read.All
 
 ---
 
@@ -107,6 +109,15 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 - RoleManagement.Read.Directory  
 - Mail.Send  
 - CloudLicensing.Read  
+
+---
+
+### Get-CustomSecurityAttributesReport
+
+- CustomSecAttributeAssignment.Read.All
+- User.Read.All
+- Organization.Read.All
+- Mail.Send
 
 ---
 
