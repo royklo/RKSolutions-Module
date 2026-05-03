@@ -31,7 +31,8 @@ if (Test-Path $privatePath) {
         'Invoke-RKSolutionsWithConnection.ps1',
         'Invoke-GraphRequestWithPaging.ps1',
         'Send-EmailWithAttachment.ps1',
-        'ConvertTo-DateString.ps1'
+        'ConvertTo-DateString.ps1',
+        'New-RKSolutionsReportTemplate.ps1'
     )
     foreach ($name in $sharedOrder) {
         $fp = Join-Path $privatePath $name
