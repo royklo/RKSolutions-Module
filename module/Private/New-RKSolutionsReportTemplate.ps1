@@ -760,13 +760,17 @@ $CustomCss
         }
     });
 
-    // Tab switching
+    // Tab switching - recalculate DataTable widths after showing hidden panels
     `$(document).on('click', '.rk-tab', function() {
         const target = `$(this).data('target');
         `$(this).closest('.rk-tabs').find('.rk-tab').removeClass('active');
         `$(this).addClass('active');
         `$(this).closest('.rk-tabs').siblings('.rk-panel').removeClass('active');
         `$('#' + target).addClass('active');
+        // DataTables can't calculate column widths when hidden; adjust after tab is visible
+        `$('#' + target).find('table.dataTable').each(function() {
+            `$(this).DataTable().columns.adjust();
+        });
     });
 });
 
