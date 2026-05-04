@@ -422,13 +422,17 @@ input:checked + .rk-theme-toggle-slider:before { transform: translateX(18px); }
     gap: 12px;
     transition: background-color 0.3s, color 0.3s;
 }
-.rk-card-body { padding: 20px; }
+.rk-card-body {
+    padding: 20px;
+    background-color: var(--bg-base);
+    transition: background-color 0.3s;
+}
 
 table.dataTable, .table {
     width: 100% !important;
     border-collapse: collapse !important;
     color: var(--text-body) !important;
-    background-color: transparent !important;
+    background-color: var(--bg-base) !important;
 }
 .table thead th {
     background-color: var(--bg-warm) !important;
@@ -447,6 +451,7 @@ table.dataTable, .table {
     vertical-align: middle;
     border: 1px solid var(--border) !important;
     color: var(--text-body) !important;
+    background-color: inherit !important;
     font-family: 'Source Serif 4', serif;
     transition: background-color 0.3s, color 0.3s, border-color 0.3s;
 }
@@ -455,9 +460,27 @@ table.dataTable, .table {
     font-size: 0.82rem;
 }
 .table tbody tr { background-color: var(--bg-base) !important; transition: background-color 0.2s; }
+.table tbody tr:nth-child(even) { background-color: var(--bg-elevated) !important; }
+[data-theme="dark"] .table tbody tr { background-color: var(--bg-base) !important; }
 [data-theme="dark"] .table tbody tr:nth-child(even) { background-color: var(--bg-deep) !important; }
 .table tbody tr:hover { background-color: var(--accent-soft) !important; }
 .table tbody tr:hover td { background-color: inherit !important; }
+
+/* Override Bootstrap table backgrounds */
+.table-striped > tbody > tr:nth-of-type(odd),
+.table-striped > tbody > tr:nth-of-type(even),
+.table-striped > tbody > tr > td,
+.table > tbody > tr > td,
+.table > tbody > tr {
+    background-color: inherit !important;
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: transparent;
+    --bs-table-hover-bg: transparent;
+}
+
+/* DataTables wrapper backgrounds */
+.dataTables_wrapper { background-color: transparent !important; color: var(--text-body) !important; }
+.dataTables_wrapper .row { background-color: transparent !important; }
 
 /* --- Status Badges --- */
 .rk-badge {
