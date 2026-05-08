@@ -33,7 +33,10 @@ function Invoke-GraphRequestWithPaging {
             }
         } while (-not $success -and $retryCount -lt $MaxRetries)
         if (-not $success) { break }
-        if ($results.Count -gt 10000) { break }
+        if ($results.Count -gt 10000) {
+            Write-Warning "Invoke-GraphRequestWithPaging: Results truncated at 10,000 items for URI: $Uri"
+            break
+        }
     } while ($currentUri)
     $results.ToArray()
 }

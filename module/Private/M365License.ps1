@@ -37,12 +37,7 @@ function New-HTMLReport {
     foreach ($item in $Report) {
         $accountStatusClass = if ($item.AccountEnabled -eq "No") { 'class="table-danger"' } else { '' }
 
-        $assignmentTypeBadge = switch ($item.AssignmentType) {
-            "Direct" { '<span class="rk-badge rk-badge-ok">Direct</span>' }
-            "Inherited" { '<span class="rk-badge rk-badge-accent">Inherited</span>' }
-            "Both" { '<span class="rk-badge rk-badge-warn">Both</span>' }
-            default { '<span class="rk-badge rk-badge-na">Unknown</span>' }
-        }
+        $assignmentTypeText = [System.Net.WebUtility]::HtmlEncode($item.AssignmentType)
 
         $accountStatus = if ($item.AccountEnabled -eq "Yes") {
             '<span class="rk-badge rk-badge-ok">Enabled</span>'
@@ -53,13 +48,13 @@ function New-HTMLReport {
 
         $tableRows += @"
     <tr $accountStatusClass>
-        <td>$($item.DisplayName)</td>
-        <td>$($item.UserPrincipalName)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.DisplayName))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.UserPrincipalName))</td>
         <td>$accountStatus</td>
-        <td>$($item.LastSuccessfulSignIn)</td>
-        <td>$($item.AssignedLicensesFriendlyName)</td>
-        <td>$assignmentTypeBadge</td>
-        <td>$($item.Inheritance)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.LastSuccessfulSignIn))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignedLicensesFriendlyName))</td>
+        <td>$assignmentTypeText</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.Inheritance))</td>
     </tr>
 "@
     }
@@ -93,9 +88,9 @@ function New-HTMLReport {
 
         $subscriptionRows += @"
     <tr>
-        <td>$($item.FriendlyName)</td>
-        <td>$($item.CreatedDate)</td>
-        <td>$($item.EndDate)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.FriendlyName))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.CreatedDate))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.EndDate))</td>
         <td>$licenseStatusBadge</td>
         <td>$($item.ConsumedUnits)</td>
         <td>$($item.TotalLicenses)</td>
@@ -108,22 +103,17 @@ function New-HTMLReport {
     $disabledUsersRows = ""
     $disabledUsers = $Report | Where-Object { $_.AccountEnabled -eq "No" }
     foreach ($item in $disabledUsers) {
-        $assignmentTypeBadge = switch ($item.AssignmentType) {
-            "Direct" { '<span class="rk-badge rk-badge-ok">Direct</span>' }
-            "Inherited" { '<span class="rk-badge rk-badge-accent">Inherited</span>' }
-            "Both" { '<span class="rk-badge rk-badge-warn">Both</span>' }
-            default { '<span class="rk-badge rk-badge-na">Unknown</span>' }
-        }
+        $assignmentTypeText = [System.Net.WebUtility]::HtmlEncode($item.AssignmentType)
 
         $disabledUsersRows += @"
     <tr>
-        <td>$($item.DisplayName)</td>
-        <td>$($item.UserPrincipalName)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.DisplayName))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.UserPrincipalName))</td>
         <td><span class="rk-badge rk-badge-error">Disabled</span></td>
-        <td>$($item.LastSuccessfulSignIn)</td>
-        <td>$($item.AssignedLicensesFriendlyName)</td>
-        <td>$assignmentTypeBadge</td>
-        <td>$($item.Inheritance)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.LastSuccessfulSignIn))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignedLicensesFriendlyName))</td>
+        <td>$assignmentTypeText</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.Inheritance))</td>
     </tr>
 "@
     }
@@ -300,7 +290,7 @@ function New-HTMLReport {
                     // Strip HTML tags for display
                     var text = value.replace(/<[^>]*>/g, '').trim();
                     if (text) {
-                        select.append('<option value="' + text + '">' + text + '</option>');
+                        select.append($('<option>').val(text).text(text));
                     }
                 }
             });
@@ -362,7 +352,7 @@ function New-HTMLReport {
     # Report-specific CSS
     $customCss = @"
     .rk-filter-bar .form-select {
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Geist Mono', ui-monospace, monospace;
         font-size: 0.75rem;
         padding: 4px 8px;
         border-radius: 6px;
@@ -376,7 +366,7 @@ function New-HTMLReport {
 "@
 
     # Generate the full HTML report using the shared template
-    $htmlContent = New-RKSolutionsReportTemplate `
+    $htmlContent = Get-RKSolutionsReportTemplate `
         -TenantName $Organization `
         -ReportTitle 'License' `
         -ReportSlug 'm365-licenses' `
@@ -518,7 +508,7 @@ function Invoke-M365LicenseReportCore {
         }
 
         # Create an overview of subscriptions with their end date
-        $SubscriptionOverview = @()
+        $SubscriptionOverview = [System.Collections.Generic.List[PSObject]]::new()
 
         if ($useCloudLicensingAPI) {
             # NEW: Process allotments from Cloud Licensing API
@@ -642,7 +632,7 @@ function Invoke-M365LicenseReportCore {
 
                 $availableLicenses = $skuData.TotalLicenses - $skuData.ConsumedUnits
 
-                $SubscriptionOverview += [PSCustomObject]@{
+                $SubscriptionOverview.Add([PSCustomObject]@{
                     SubscriptionId    = ($skuData.SubscriptionIds | Select-Object -First 1)
                     FriendlyName      = $skuData.FriendlyName
                     SKUPartNumber     = $skuData.SKUPartNumber
@@ -653,7 +643,7 @@ function Invoke-M365LicenseReportCore {
                     TotalLicenses     = $skuData.TotalLicenses
                     AvailableLicenses = $availableLicenses
                     AssignableTo      = $skuData.AssignableTo
-                }
+                })
             }
 
             # Show summary of date matching
@@ -726,7 +716,7 @@ function Invoke-M365LicenseReportCore {
                 $consumedUnits = if ($sku.ConsumedUnits) { $sku.ConsumedUnits } else { 0 }
                 $availableLicenses = $totalLicenses - $consumedUnits
 
-                $SubscriptionOverview += [PSCustomObject]@{
+                $SubscriptionOverview.Add([PSCustomObject]@{
                     SubscriptionId    = $subscription.Id
                     FriendlyName      = $friendlyName
                     CreatedDate       = $formattedCreatedDate
@@ -735,7 +725,7 @@ function Invoke-M365LicenseReportCore {
                     ConsumedUnits     = $consumedUnits
                     TotalLicenses     = $totalLicenses
                     AvailableLicenses = $availableLicenses
-                }
+                })
             }
         }
 
@@ -764,8 +754,8 @@ function Invoke-M365LicenseReportCore {
             }
         }
 
-        # Initialize the report array
-        $Report = @()
+        # Initialize the report collection
+        $Report = [System.Collections.Generic.List[PSObject]]::new()
 
         # Process user license data
         $totalUsers = $users.Count
@@ -881,7 +871,7 @@ function Invoke-M365LicenseReportCore {
                 }
 
                 # Add to the report
-                $Report += $licenseData
+                $Report.Add($licenseData)
             }
         }
 

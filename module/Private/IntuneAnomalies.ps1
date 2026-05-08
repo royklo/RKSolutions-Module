@@ -16,7 +16,7 @@ function New-IntuneAnomaliesHTMLReport {
         [Parameter(Mandatory = $false)]
         [array]$Report_InactiveDevices,
         [Parameter(Mandatory = $false)]
-        [array]$Report_OperationSystemEdtionOverview,
+        [array]$Report_OperatingSystemEditionOverview,
         [Parameter(Mandatory = $false)]
         [array]$Report_NoncompliantDevices,
         [Parameter(Mandatory = $false)]
@@ -27,7 +27,8 @@ function New-IntuneAnomaliesHTMLReport {
 
     # Default ExportPath to current folder if not provided
     if (-not $ExportPath) {
-        $ExportPath = Join-Path (Get-Location).Path "$TenantName-IntuneAnomaliesReport.html"
+        $safeTenantName = $TenantName -replace '[\\/:*?"<>|]', '_'
+        $ExportPath = Join-Path (Get-Location).Path "$safeTenantName-IntuneAnomaliesReport.html"
     }
 
     # Calculate counts for dashboard statistics
@@ -37,7 +38,7 @@ function New-IntuneAnomaliesHTMLReport {
     $Report_DevicesWithoutAutopilotHash_Count = $Report_DevicesWithoutAutopilotHash | Measure-Object | Select-Object -ExpandProperty Count
     $Report_InactiveDevices_Count = $Report_InactiveDevices | Measure-Object | Select-Object -ExpandProperty Count
     $Report_NoncompliantDevices_Count = ($Report_NoncompliantDevices | Select-Object -Property DeviceName -Unique | Measure-Object).Count
-    $Report_OperationSystemEdtionOverview_Count = $Report_OperationSystemEdtionOverview | Measure-Object | Select-Object -ExpandProperty Count
+    $Report_OperatingSystemEditionOverview_Count = $Report_OperatingSystemEditionOverview | Measure-Object | Select-Object -ExpandProperty Count
     $Report_DisabledPrimaryUsers_Count = $Report_DisabledPrimaryUsers | Measure-Object | Select-Object -ExpandProperty Count
 
     # Get the current date and time for the report header
@@ -48,10 +49,10 @@ function New-IntuneAnomaliesHTMLReport {
     foreach ($item in $Report_ApplicationFailureReport) {
         $applicationFailureRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.Application)</td>
-            <td>$($item.Platform)</td>
-            <td>$($item.Version)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Application))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Platform))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Version))</td>
             <td>$($item.FailedDeviceCount)</td>
             <td>$($item.FailedDevicePercentage)%</td>
         </tr>
@@ -63,12 +64,12 @@ function New-IntuneAnomaliesHTMLReport {
     foreach ($item in $Report_DevicesWithMultipleUsers) {
         $multipleUsersRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.DeviceName)</td>
-            <td>$($item.PrimaryUser)</td>
-            <td>$($item.EnrollmentProfile)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.EnrollmentProfile))</td>
             <td><span class="rk-badge rk-badge-warn">$($item.usersLoggedOnCount)</span></td>
-            <td>$($item.usersLoggedOnIds)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.usersLoggedOnIds))</td>
         </tr>
 "@
     }
@@ -78,12 +79,12 @@ function New-IntuneAnomaliesHTMLReport {
     foreach ($item in $Report_NotEncryptedDevices) {
         $notEncryptedRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.DeviceName)</td>
-            <td>$($item.PrimaryUser)</td>
-            <td>$($item.Serialnumber)</td>
-            <td>$($item.DeviceManufacturer)</td>
-            <td>$($item.DeviceModel)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Serialnumber))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceManufacturer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceModel))</td>
         </tr>
 "@
     }
@@ -93,12 +94,12 @@ function New-IntuneAnomaliesHTMLReport {
     foreach ($item in $Report_DevicesWithoutAutopilotHash) {
         $noAutopilotHashRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.DeviceName)</td>
-            <td>$($item.PrimaryUser)</td>
-            <td>$($item.Serialnumber)</td>
-            <td>$($item.DeviceManufacturer)</td>
-            <td>$($item.DeviceModel)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Serialnumber))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceManufacturer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceModel))</td>
         </tr>
 "@
     }
@@ -108,13 +109,13 @@ function New-IntuneAnomaliesHTMLReport {
     foreach ($item in $Report_InactiveDevices) {
         $inactiveDevicesRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.DeviceName)</td>
-            <td>$($item.PrimaryUser)</td>
-            <td>$($item.Serialnumber)</td>
-            <td>$($item.DeviceManufacturer)</td>
-            <td>$($item.DeviceModel)</td>
-            <td>$($item.LastContact)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Serialnumber))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceManufacturer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceModel))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.LastContact))</td>
         </tr>
 "@
     }
@@ -126,29 +127,29 @@ function New-IntuneAnomaliesHTMLReport {
 
         $noncompliantDevicesRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.DeviceName)</td>
-            <td>$($item.PrimaryUser)</td>
-            <td>$($item.Serialnumber)</td>
-            <td>$($item.DeviceManufacturer)</td>
-            <td>$($item.DeviceModel)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Serialnumber))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceManufacturer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceModel))</td>
             <td>$statusBadge</td>
-            <td>$($item.NoncompliantBasedOn)</td>
-            <td>$($item.NoncompliantAlert)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.NoncompliantBasedOn))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.NoncompliantAlert))</td>
         </tr>
 "@
     }
 
     # Generate table rows for OS Edition Overview
     $osEditionOverviewRows = ""
-    foreach ($item in $Report_OperationSystemEdtionOverview) {
+    foreach ($item in $Report_OperatingSystemEditionOverview) {
         $osEditionOverviewRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.DeviceName)</td>
-            <td>$($item.PrimaryUser)</td>
-            <td>$($item.OperatingSystemEdition)</td>
-            <td>$($item.OSFriendlyname)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.OperatingSystemEdition))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.OSFriendlyname))</td>
         </tr>
 "@
     }
@@ -158,17 +159,17 @@ function New-IntuneAnomaliesHTMLReport {
     foreach ($item in $Report_DisabledPrimaryUsers) {
         $disabledPrimaryUsersRows += @"
         <tr>
-            <td>$($item.Customer)</td>
-            <td>$($item.DeviceName)</td>
-            <td><span class="rk-badge rk-badge-error">$($item.PrimaryUser)</span></td>
-            <td>$($item.Serialnumber)</td>
-            <td>$($item.DeviceManufacturer)</td>
-            <td>$($item.DeviceModel)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Customer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Serialnumber))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceManufacturer))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceModel))</td>
         </tr>
 "@
     }
 
-    # Build stat tiles HTML (8 cards, cycling through t-rust, t-olive, t-steel, t-rose)
+    # Build stat tiles HTML (8 cards, each with a unique color, 5-column grid)
     $statsCardsHtml = @"
             <div class="rk-stat-tile t-rust">
                 <div class="rk-stat-eyebrow">APPLICATION FAILURES</div>
@@ -190,22 +191,22 @@ function New-IntuneAnomaliesHTMLReport {
                 <div class="rk-stat-number">$Report_DevicesWithoutAutopilotHash_Count</div>
                 <div class="rk-stat-caption">Missing hardware hash</div>
             </div>
-            <div class="rk-stat-tile t-rust">
+            <div class="rk-stat-tile t-amber">
                 <div class="rk-stat-eyebrow">INACTIVE DEVICES</div>
                 <div class="rk-stat-number">$Report_InactiveDevices_Count</div>
                 <div class="rk-stat-caption">90+ days inactive</div>
             </div>
-            <div class="rk-stat-tile t-olive">
+            <div class="rk-stat-tile t-violet">
                 <div class="rk-stat-eyebrow">NONCOMPLIANT</div>
                 <div class="rk-stat-number">$Report_NoncompliantDevices_Count</div>
                 <div class="rk-stat-caption">Unique noncompliant devices</div>
             </div>
-            <div class="rk-stat-tile t-steel">
+            <div class="rk-stat-tile t-teal">
                 <div class="rk-stat-eyebrow">OS EDITIONS</div>
-                <div class="rk-stat-number">$Report_OperationSystemEdtionOverview_Count</div>
+                <div class="rk-stat-number">$Report_OperatingSystemEditionOverview_Count</div>
                 <div class="rk-stat-caption">OS edition entries</div>
             </div>
-            <div class="rk-stat-tile t-rose">
+            <div class="rk-stat-tile t-slate">
                 <div class="rk-stat-eyebrow">DISABLED USERS</div>
                 <div class="rk-stat-number">$Report_DisabledPrimaryUsers_Count</div>
                 <div class="rk-stat-caption">Disabled primary users</div>
@@ -728,7 +729,7 @@ function New-IntuneAnomaliesHTMLReport {
             var select = `$('#' + selectId);
             values.forEach(function(value) {
                 if (value && value.toString().trim() !== '') {
-                    select.append('<option value="' + value + '">' + value + '</option>');
+                    select.append($('<option>').val(value).text(value));
                 }
             });
         }
@@ -1024,7 +1025,7 @@ function New-IntuneAnomaliesHTMLReport {
     # Report-specific CSS (minimal -- filter bar inline styles only)
     $customCss = @"
     .rk-filter-bar .form-select {
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Geist Mono', ui-monospace, monospace;
         font-size: 0.75rem;
         padding: 4px 8px;
         border-radius: 6px;
@@ -1032,7 +1033,7 @@ function New-IntuneAnomaliesHTMLReport {
 "@
 
     # Generate the full HTML report using the shared template
-    $htmlContent = New-RKSolutionsReportTemplate `
+    $htmlContent = Get-RKSolutionsReportTemplate `
         -TenantName $TenantName `
         -ReportTitle 'Anomalies' `
         -ReportSlug 'intune-anomalies' `
@@ -1042,7 +1043,8 @@ function New-IntuneAnomaliesHTMLReport {
         -BodyContentHtml $bodyContentHtml `
         -CustomCss $customCss `
         -ReportDate $CurrentDate `
-        -Tags @('Intune', 'Compliance', 'Security')
+        -Tags @('Intune', 'Compliance', 'Security') `
+        -StatsClass 'rk-stats-5'
 
     # Export to HTML file
     $htmlContent | Out-File -FilePath $ExportPath -Encoding utf8
@@ -1055,7 +1057,8 @@ function New-IntuneAnomaliesHTMLReport {
 
     # Open the HTML file only if we're not sending email
     if (-not $SendEmail) {
-        Invoke-Item $ExportPath
+        try { Invoke-Item $ExportPath -ErrorAction Stop }
+        catch { Write-Host "Report saved to: $ExportPath (could not open automatically)." -ForegroundColor Yellow }
     }
 }
 
@@ -1096,6 +1099,7 @@ function Get-AllDeviceData {
             "^10\.0\.22631" { return "Windows 11 23H2" }
             "^10\.0\.22635" { return "Windows 11 23H2 Insider Preview" }
             "^10\.0\.261" { return "Windows 11 24H2" }
+            "^10\.0\.262" { return "Windows 11 25H2" }
             default { return "Other" }
         }
     }
@@ -1158,7 +1162,8 @@ function Get-AllDeviceData {
         'ComplianceState',
         'usersLoggedOn',      # Contains userId for logged-on users
         'hardwareInformation', # Contains nested properties like tpmVersion, OS details, BiosVersion
-        'managementAgent' # Indicates the management agent used (e.g., Intune)
+        'managementAgent', # Indicates the management agent used (e.g., Intune)
+        'skuFamily' # OS edition (Pro, Enterprise, Home, etc.) - more reliable than hardwareInformation.operatingSystemEdition
     )
 
     # Get all Windows Devices from Microsoft Intune
@@ -1300,7 +1305,7 @@ function Get-AllDeviceData {
                 OperatingSystemVersion     = $DeviceProperties.OSVersion
                 OSFriendlyname             = Get-OSFriendlyName -OperatingSystemVersion $DeviceProperties.OSVersion
                 OperatingSystemLanguage    = if ($hardwareInfo.operatingSystemLanguage) { $hardwareInfo.operatingSystemLanguage } else { "Unknown" }
-                OperatingSystemEdition     = if ($hardwareInfo.operatingSystemEdition) { $hardwareInfo.operatingSystemEdition } else { "Unknown" }
+                OperatingSystemEdition     = if ($DeviceProperties.skuFamily) { $DeviceProperties.skuFamily } elseif ($hardwareInfo.operatingSystemEdition) { $hardwareInfo.operatingSystemEdition } else { "Unknown" }
                 operatingSystemProductType = if ($hardwareInfo.operatingSystemProductType) { Get-OperatingSystemProductType -Customer "$($hardwareInfo.operatingSystemProductType)" } else { "Unknown" }
                 BiosVersion                = if ($hardwareInfo.systemManagementBIOSVersion) { $hardwareInfo.systemManagementBIOSVersion } else { "Unknown" }
                 ComplianceStatus           = $DeviceProperties.ComplianceState
@@ -1366,21 +1371,8 @@ function Get-ApplicationFailures {
         }
     }
 
-    # Set temporary directory and file path based on OS
-    if ($detectedWindows) {
-        $tempDir = "C:\temp"
-    } else {
-        # macOS and Linux
-        $tempDir = "/tmp"
-    }
-
-    # Use Join-Path for cross-platform compatibility
-    $Data = Join-Path $tempDir "Data.log"
-
-    # Ensure temp directory exists
-    if (-not (Test-Path -Path $tempDir)) {
-        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-    }
+    # Use a unique temporary file to avoid race conditions
+    $Data = [System.IO.Path]::GetTempFileName()
 
     $apps = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$filter=(isof(%27microsoft.graph.win32CatalogApp%27)%20or%20isof(%27microsoft.graph.windowsStoreApp%27)%20or%20isof(%27microsoft.graph.microsoftStoreForBusinessApp%27)%20or%20isof(%27microsoft.graph.officeSuiteApp%27)%20or%20(isof(%27microsoft.graph.win32LobApp%27)%20and%20not(isof(%27microsoft.graph.win32CatalogApp%27)))%20or%20isof(%27microsoft.graph.windowsMicrosoftEdgeApp%27)%20or%20isof(%27microsoft.graph.windowsPhone81AppX%27)%20or%20isof(%27microsoft.graph.windowsPhone81StoreApp%27)%20or%20isof(%27microsoft.graph.windowsPhoneXAP%27)%20or%20isof(%27microsoft.graph.windowsAppX%27)%20or%20isof(%27microsoft.graph.windowsMobileMSI%27)%20or%20isof(%27microsoft.graph.windowsUniversalAppX%27)%20or%20isof(%27microsoft.graph.webApp%27)%20or%20isof(%27microsoft.graph.windowsWebApp%27)%20or%20isof(%27microsoft.graph.winGetApp%27))%20and%20(microsoft.graph.managedApp/appAvailability%20eq%20null%20or%20microsoft.graph.managedApp/appAvailability%20eq%20%27lineOfBusiness%27%20or%20isAssigned%20eq%20true)&`$orderby=displayName&").value
 
@@ -1408,15 +1400,15 @@ function Get-ApplicationFailures {
     # Fix char encoding to UTF-8
     $Response = [system.Text.Encoding]::UTF8.GetString(($DataFile).ToCharArray()) | ConvertFrom-Json
 
-    #Maak een nieuwe array
+    # Build result array from response values
     $ReturnObject = New-Object System.Collections.ArrayList
 
-    #voor elke waardeverzameling in values
+    # For each value set in the response
     foreach ($value in $Response.Values) {
-        #maak een nieuw lineobject[hashtable]
+        # Create a new line object (hashtable)
         $LineObject = @{ }
 
-        #voor elke prop in het het schema
+        # For each property in the schema
         foreach ($prop in $Response.Schema) {
             $LineObject[$prop.Column] = $value[$Response.Schema.IndexOf($prop)]
         }

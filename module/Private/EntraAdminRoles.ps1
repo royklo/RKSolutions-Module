@@ -62,15 +62,15 @@ function New-AdminRoleHTMLReport {
 
         $allRolesRows += @"
         <tr>
-            <td>$($item.Principal)</td>
-            <td>$($item.DisplayName)</td>
-            <td>$($item.PrincipalType)</td>
-            <td>$($item.AccountStatus)</td>
-            <td>$($item.'Assigned Role')</td>
-            <td>$($item.AssignedRoleScopeName)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Principal))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DisplayName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrincipalType))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AccountStatus))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.'Assigned Role'))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignedRoleScopeName))</td>
             <td>$assignmentTypeBadge</td>
-            <td>$($item.AssignmentStartDate)</td>
-            <td>$($item.AssignmentEndDate)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentStartDate))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentEndDate))</td>
         </tr>
 "@
     }
@@ -87,15 +87,15 @@ function New-AdminRoleHTMLReport {
 
         $userRolesRows += @"
     <tr>
-        <td>$($item.Principal)</td>
-        <td>$($item.DisplayName)</td>
-        <td>$($item.PrincipalType)</td>
-        <td>$($item.AccountStatus)</td>
-        <td>$($item.'Assigned Role')</td>
-        <td>$($item.AssignedRoleScopeName)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.Principal))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.DisplayName))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.PrincipalType))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AccountStatus))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.'Assigned Role'))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignedRoleScopeName))</td>
         <td>$assignmentTypeBadge</td>
-        <td>$($item.AssignmentStartDate)</td>
-        <td>$($item.AssignmentEndDate)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentStartDate))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentEndDate))</td>
     </tr>
 "@
     }
@@ -121,7 +121,7 @@ function New-AdminRoleHTMLReport {
         if ($item.ActivatedMembers -and @($item.ActivatedMembers).Count -gt 0) {
             $activatedList = @()
             foreach ($activatedMember in $item.ActivatedMembers) {
-                $activatedList += "$($activatedMember.UserPrincipalName)"
+                $activatedList += [System.Net.WebUtility]::HtmlEncode($activatedMember.UserPrincipalName)
             }
             $activatedMembersText = $activatedList -join "<br/>"
         }
@@ -131,16 +131,16 @@ function New-AdminRoleHTMLReport {
 
         $groupRolesRows += @"
         <tr id="group-$safeId" class="group-assignment-row">
-            <td>$($item.Principal)</td>
-            <td>$($item.DisplayName)</td>
-            <td>$($item.PrincipalType)</td>
-            <td>$($item.AccountStatus)</td>
-            <td>$($item.'Assigned Role')</td>
-            <td>$($item.AssignedRoleScopeName)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.Principal))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.DisplayName))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.PrincipalType))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AccountStatus))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.'Assigned Role'))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignedRoleScopeName))</td>
             <td>$assignmentTypeBadge</td>
-            <td>$($item.AssignmentStartDate)</td>
-            <td>$($item.AssignmentEndDate)</td>
-            <td>$groupMembers</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentStartDate))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentEndDate))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($groupMembers))</td>
             <td style="max-width: 300px; word-wrap: break-word;">$activatedMembersText</td>
         </tr>
 "@
@@ -158,15 +158,15 @@ function New-AdminRoleHTMLReport {
 
         $spRolesRows += @"
     <tr>
-        <td>$($item.Principal)</td>
-        <td>$($item.DisplayName)</td>
-        <td>$($item.PrincipalType)</td>
-        <td>$($item.AccountStatus)</td>
-        <td>$($item.'Assigned Role')</td>
-        <td>$($item.AssignedRoleScopeName)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.Principal))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.DisplayName))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.PrincipalType))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AccountStatus))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.'Assigned Role'))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignedRoleScopeName))</td>
         <td>$assignmentTypeBadge</td>
-        <td>$($item.AssignmentStartDate)</td>
-        <td>$($item.AssignmentEndDate)</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentStartDate))</td>
+        <td>$([System.Net.WebUtility]::HtmlEncode($item.AssignmentEndDate))</td>
     </tr>
 "@
     }
@@ -183,16 +183,16 @@ function New-AdminRoleHTMLReport {
 
             $pimAuditLogsRows += @"
         <tr>
-            <td>$($log.DateTime)</td>
-            <td>$($log.InitiatedBy)</td>
-            <td>$($log.OperationType)</td>
-            <td>$($log.InitiatedByType)</td>
-            <td>$($log.Role)</td>
-            <td>$($log.Target)</td>
-            <td>$($log.Operation)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.DateTime))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.InitiatedBy))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.OperationType))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.InitiatedByType))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.Role))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.Target))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.Operation))</td>
             <td>$resultBadge</td>
-            <td>$($log.RoleProperties)</td>
-            <td>$($log.Justification)</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.RoleProperties))</td>
+            <td>$([System.Net.WebUtility]::HtmlEncode($log.Justification))</td>
         </tr>
 "@
         }
@@ -469,19 +469,19 @@ $tabButtons
                 </div>
             </div>
             <div class="rk-card-body">
-                <table id="pimAuditLogsTable" class="table table-bordered" style="width:100%">
+                <table id="pimAuditLogsTable" class="table table-bordered" style="width:100%; table-layout:fixed;">
                     <thead>
                         <tr>
-                            <th>Date/Time</th>
-                            <th>Initiated By</th>
-                            <th>Operation Type</th>
-                            <th>Initiator Type</th>
-                            <th>Role</th>
-                            <th>Target</th>
-                            <th>Operation</th>
-                            <th>Result</th>
-                            <th>Role Properties</th>
-                            <th>Justification</th>
+                            <th style="width:10%">Date/Time</th>
+                            <th style="width:14%">Initiated By</th>
+                            <th style="width:7%">Operation Type</th>
+                            <th style="width:7%">Initiator Type</th>
+                            <th style="width:12%">Role</th>
+                            <th style="width:14%">Target</th>
+                            <th style="width:12%">Operation</th>
+                            <th style="width:6%">Result</th>
+                            <th style="width:10%">Role Properties</th>
+                            <th style="width:8%">Justification</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -886,15 +886,29 @@ $tabButtons
     /* Filter bar form controls */
     .rk-filter-bar .form-select,
     .rk-filter-bar .form-control {
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Geist Mono', ui-monospace, monospace;
         font-size: 0.75rem;
         padding: 4px 8px;
         border-radius: 6px;
     }
+
+    /* PIM Audit Logs: constrain long-content columns */
+    #pimAuditLogsTable td {
+        word-break: break-word;
+        overflow-wrap: break-word;
+        vertical-align: top;
+    }
+    #pimAuditLogsTable td:nth-child(9),
+    #pimAuditLogsTable td:nth-child(10) {
+        font-size: 0.7rem;
+        max-height: 6em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 "@
 
     # Generate the full HTML report using the shared template
-    $htmlContent = New-RKSolutionsReportTemplate `
+    $htmlContent = Get-RKSolutionsReportTemplate `
         -TenantName $TenantName `
         -ReportTitle 'Admin Roles' `
         -ReportSlug 'entra-admin-roles' `
@@ -1067,8 +1081,7 @@ Function Get-PIMAuditLogs {
                 } elseif ($oldValue -eq $newValue) {
                     $roleProperties += "$($propName): $newValue"
                 } else {
-                    # Use HTML arrow entity instead of Unicode character
-                    $roleProperties += "$($propName): $oldValue &rarr; $newValue"
+                    $roleProperties += "$($propName): $oldValue → $newValue"
                 }
             }
         }

@@ -68,7 +68,14 @@ function Send-EmailWithAttachment {
     }
 
     $sendMailUri = 'https://graph.microsoft.com/v1.0/me/sendMail'
-    if ($From) { $sendMailUri = "https://graph.microsoft.com/v1.0/users/$From/sendMail" }
+    if ($From) {
+        if ($From -notmatch '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' -and
+            $From -notmatch '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
+            Write-Error "Invalid -From value '$From'. Must be an email address or user object ID."
+            return $false
+        }
+        $sendMailUri = "https://graph.microsoft.com/v1.0/users/$From/sendMail"
+    }
 
     try {
         $jsonBody = ConvertTo-Json -InputObject $mailRequestBody -Depth 20

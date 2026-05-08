@@ -1,17 +1,15 @@
 <#
 .SYNOPSIS
-    Generates an interactive HTML report of users with custom security attributes in Microsoft Entra ID.
+    Generates an interactive HTML report of custom security attributes across users, devices, and enterprise apps.
     Connect first with Connect-RKGraph; this cmdlet uses the existing connection.
 .DESCRIPTION
-    Connects to Microsoft Graph API and retrieves all users with specified custom security attributes.
-    Supports dynamic attribute set selection, filtering, and sending reports via email.
-    The report includes filterable tables with export capabilities (Excel, CSV, PDF, Print).
+    Queries Microsoft Graph for custom security attributes assigned to users, devices, and service principals.
+    Auto-discovers attribute sets or accepts a specific set. Generates an interactive report with:
+    - Overview tab with coverage matrix (which entities have which attribute sets)
+    - Dynamic tabs per attribute set with sub-sections for users, devices, and enterprise apps
+    - DataTables with search, export (Excel/CSV/PDF), column visibility, and dark/light theme toggle
 .PARAMETER AttributeSet
-    The custom security attribute set to query. Defaults to "CustomerData".
-.PARAMETER AttributeNames
-    Specific attribute names to include. If not specified, all attributes in the set are used.
-.PARAMETER Filters
-    Hashtable of attribute name/value pairs to filter users. Example: @{ CustomerName = "Contoso" }
+    Specific attribute set to report on. If not specified, auto-discovers and reports on all attribute sets.
 .PARAMETER SendEmail
     Send the report as an email attachment via Microsoft Graph Mail.Send.
 .PARAMETER Recipient
@@ -24,10 +22,10 @@
     Enable verbose debug output.
 .EXAMPLE
     Get-CustomSecurityAttributesReport
-    Generate report with default CustomerData attribute set.
+    Auto-discovers all attribute sets and generates a full report.
 .EXAMPLE
-    Get-CustomSecurityAttributesReport -AttributeSet "Engineering" -AttributeNames "Project","CostCenter"
-    Query specific attribute set with custom attributes.
+    Get-CustomSecurityAttributesReport -AttributeSet "ComplianceData"
+    Report on a specific attribute set only.
 .EXAMPLE
     Get-CustomSecurityAttributesReport -SendEmail -Recipient "admin@contoso.com"
     Generate report and email it.
@@ -36,13 +34,7 @@ function Get-CustomSecurityAttributesReport {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$AttributeSet = "CustomerData",
-
-        [Parameter(Mandatory = $false)]
-        [string[]]$AttributeNames,
-
-        [Parameter(Mandatory = $false)]
-        [hashtable]$Filters,
+        [string]$AttributeSet,
 
         [Parameter(Mandatory = $false)]
         [switch]$SendEmail,
@@ -69,18 +61,21 @@ function Get-CustomSecurityAttributesReport {
         $tenantInfo = Invoke-MgGraphRequest -Uri 'v1.0/organization' -Method Get -OutputType PSObject
         $tenantName = $tenantInfo.value[0].displayName
 
-        # Fetch attribute data
-        $reportData = Get-CustomSecurityAttributeData -AttributeSet $AttributeSet -AttributeNames $AttributeNames -Filters $Filters -DebugMode:$DebugMode
+        # Fetch attribute data across all entity types
+        $dataParams = @{ DebugMode = $DebugMode }
+        if ($AttributeSet) { $dataParams['AttributeSet'] = $AttributeSet }
+        $reportData = Get-CustomSecurityAttributeData @dataParams
 
-        if ($reportData.UserData.Count -eq 0) {
-            Write-Host 'No users found matching the criteria.' -ForegroundColor Yellow
+        $totalEntities = $reportData.Counts.Users + $reportData.Counts.Devices + $reportData.Counts.Apps
+        if ($totalEntities -eq 0) {
+            Write-Host 'No entities found with custom security attributes.' -ForegroundColor Yellow
             return
         }
 
-        Write-Host "Found $($reportData.UserData.Count) user(s) with custom security attributes." -ForegroundColor Green
+        Write-Host "Found $($reportData.Counts.Users) user(s), $($reportData.Counts.Devices) device(s), $($reportData.Counts.Apps) app(s) with attributes." -ForegroundColor Green
 
         # Generate HTML report
-        $htmlPath = New-CustomSecurityAttributesHTMLReport -TenantName $tenantName -UserData $reportData.UserData -AttributeSet $AttributeSet -AttributeNames $reportData.AttributeNames -ExportPath $ExportPath
+        $htmlPath = New-CustomSecurityAttributesHTMLReport -TenantName $tenantName -ReportData $reportData -ExportPath $ExportPath
 
         # Send email if requested
         if ($SendEmail -and $Recipient) {

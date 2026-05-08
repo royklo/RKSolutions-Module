@@ -22,32 +22,6 @@ function Export-Results {
             Write-Host "OSVersion: $($osInfo.Platform), $($osInfo.Version)" -ForegroundColor Green
         }
 
-        $detectedWindows = $false
-        $detectedMacOS = $false
-        $detectedLinux = $false
-        if (Get-Variable -Name 'IsWindows' -ErrorAction SilentlyContinue) {
-            $detectedWindows = $IsWindows
-            $detectedMacOS = $IsMacOS
-            $detectedLinux = $IsLinux
-        } else {
-            $osInfo = [System.Environment]::OSVersion.Platform
-            switch ($osInfo) {
-                'Win32NT' { $detectedWindows = $true }
-                'Unix' {
-                    if (Test-Path '/System/Library/CoreServices/SystemVersion.plist') { $detectedMacOS = $true }
-                    else { $detectedLinux = $true }
-                }
-                default {
-                    try {
-                        if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) { $detectedWindows = $true }
-                        elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)) { $detectedMacOS = $true }
-                        elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)) { $detectedLinux = $true }
-                        else { $detectedWindows = $true }
-                    } catch { $detectedWindows = $true }
-                }
-            }
-        }
-
         $documentsPath = if ($OutputFolder -and (Test-Path $OutputFolder)) {
             $OutputFolder
         } else {

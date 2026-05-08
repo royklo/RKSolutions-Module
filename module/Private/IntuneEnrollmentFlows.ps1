@@ -62,7 +62,7 @@ function Get-GroupMemberTargetType {
                 elseif ($odataType -eq '#microsoft.graph.user') { $result = 'User' }
             }
         }
-        catch { }
+        catch { Write-Verbose "Get-GroupMemberTargetType: Failed to query members for group $GroupId -- $_" }
     }
     $script:GroupMemberTypeCache[$GroupId] = $result
     return $result
@@ -114,7 +114,10 @@ function Get-AutopilotProfileConfigByDisplayName {
             Locale             = if ($autopilotProfile.locale) { $autopilotProfile.locale } else { "-" }
         }
     }
-    catch { return $null }
+    catch {
+        Write-Verbose "Get-AutopilotProfileConfigByDisplayName: Failed for '$DisplayName' -- $_"
+        return $null
+    }
 }
 
 function Get-MobileAppDisplayName {
@@ -180,7 +183,10 @@ function Get-EspConfigByDisplayName {
             SelectedMobileAppIds            = $selectedIds
         }
     }
-    catch { return $null }
+    catch {
+        Write-Verbose "Get-EspConfigByDisplayName: Failed for '$DisplayName' -- $_"
+        return $null
+    }
 }
 
 function Get-GroupParentGroupNames {
@@ -1804,7 +1810,7 @@ $fragment
     </script>
 "@
 
-    $html = New-RKSolutionsReportTemplate `
+    $html = Get-RKSolutionsReportTemplate `
         -TenantName $TenantName `
         -ReportTitle 'Enrollment' `
         -ReportSlug 'intune-enrollment-overview' `
@@ -1891,8 +1897,8 @@ function Get-ArchitectureDiagramFragment {
         foreach ($gd in $DeviceGroupDetails) {
             $encName = [System.Net.WebUtility]::HtmlEncode($gd.DisplayName)
             $encType = [System.Net.WebUtility]::HtmlEncode($gd.GroupType)
-            $ruleCell = if ($gd.MembershipRule) { $gd.MembershipRule } else { "-" }
-            $groupTableRows += "<tr><td class=`"arch-group-cell`">$encName</td><td class=`"arch-group-type`">$encType</td><td class=`"arch-group-rule`">$ruleCell</td></tr>"
+            $ruleCell = if ($gd.MembershipRule -and $gd.MembershipRule -ne "-") { '<code>' + $gd.MembershipRule + '</code>' } else { "-" }
+            $groupTableRows += "<tr><td class=`"arch-group-cell`">$encName</td><td class=`"arch-group-type`">$encType</td><td class=`"arch-group-rule entra-rule`">$ruleCell</td></tr>"
         }
     }
     $autopilotName = if ($autopilotPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($autopilotPolicies[0]) } else { "- None -" }
@@ -1910,7 +1916,7 @@ function Get-ArchitectureDiagramFragment {
 "@ }
     [void]$sb.AppendLine('<div class="arch-flow">')
     [void]$sb.AppendLine(@"
-<div class="arch-step arch-step-device" style="--arch-fill:#0f766e;">
+<div class="arch-step arch-step-device" style="--arch-fill:#ea580c;">
 <div class="arch-step-title">Device</div>
 <div class="arch-group-table-wrap">
 <table class="arch-group-table">
@@ -1922,7 +1928,7 @@ function Get-ArchitectureDiagramFragment {
 "@)
     [void]$sb.AppendLine('<div class="arch-arrow" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>')
     [void]$sb.AppendLine(@"
-<div class="arch-step arch-step-memberof" style="--arch-fill:#115e59;">
+<div class="arch-step arch-step-memberof" style="--arch-fill:#c2410c;">
 <div class="arch-step-title">Entra ID Groups</div>
 <div class="arch-group-table-wrap">
 <table class="arch-group-table">
@@ -1944,14 +1950,14 @@ function Get-ArchitectureDiagramFragment {
         [void]$sb.AppendLine('<div class="arch-arrow" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>')
     }
     [void]$sb.AppendLine(@"
-<div class="arch-step arch-step-autopilot-esp" style="--arch-fill:#0f766e;">
+<div class="arch-step arch-step-autopilot-esp" style="--arch-fill:#ea580c;">
 <div class="arch-autopilot-esp-inner">
-<div class="arch-esp-block" style="--arch-fill:#0f766e;">
+<div class="arch-esp-block" style="--arch-fill:#ea580c;">
 <div class="arch-step-title">Autopilot Profile</div>
 <div class="arch-step-sub">$autopilotName</div>
 </div>
 <div class="arch-arrow-down" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>
-<div class="arch-esp-block" style="--arch-fill:#115e59;">
+<div class="arch-esp-block" style="--arch-fill:#c2410c;">
 <div class="arch-step-title">Enrollment Status Page</div>
 <div class="arch-step-sub">$espName</div>
 </div>
@@ -2167,7 +2173,8 @@ function Get-AppliedFlowHtmlFragment {
             $gEnc = [System.Net.WebUtility]::HtmlEncode($gtr[0])
             $tEnc = [System.Net.WebUtility]::HtmlEncode($gtr[1])
             $rEnc = [System.Net.WebUtility]::HtmlEncode($gtr[2])
-            [void]$sb.AppendLine('<div class="policy-item policy-item-4col" style="grid-template-columns: 2fr 2fr 1fr 2fr;"><div class="policy-name">' + $pEnc + '</div><div class="policy-assignment">' + $gEnc + '</div><div class="policy-type">' + $tEnc + '</div><div class="policy-filter">' + $rEnc + '</div></div>')
+            $rDisplay = if ($rEnc -and $rEnc -ne '-' -and $rEnc -ne 'No Filter') { '<code>' + $rEnc + '</code>' } else { $rEnc }
+            [void]$sb.AppendLine('<div class="policy-item policy-item-4col" style="grid-template-columns: 2fr 2fr 1fr 2fr;"><div class="policy-name">' + $pEnc + '</div><div class="policy-assignment">' + $gEnc + '</div><div class="policy-type">' + $tEnc + '</div><div class="policy-filter entra-rule">' + $rDisplay + '</div></div>')
         }
         [void]$sb.AppendLine('</div>')
         $sb.ToString()
@@ -2344,11 +2351,12 @@ $espRestHtml
                 $gEnc = [System.Net.WebUtility]::HtmlEncode($gtr[0])
                 $tEnc = [System.Net.WebUtility]::HtmlEncode($gtr[1])
                 $rEnc = [System.Net.WebUtility]::HtmlEncode($gtr[2])
+                $rDisplay = if ($rEnc -and $rEnc -ne '-' -and $rEnc -ne 'No Filter') { '<code>' + $rEnc + '</code>' } else { $rEnc }
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-item policy-item-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;">'
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">' + $pEnc + '</span></div>'
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">' + $gEnc + '</span></div>'
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">' + $tEnc + '</span></div>'
-                $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rEnc + '</span></div>'
+                $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rDisplay + '</span></div>'
                 $cloudPCProvisioningDeviceGroupsHtml += '</div>'
             }
             $cloudPCProvisioningDeviceGroupsHtml = $cloudPCTableHeader + $cloudPCProvisioningDeviceGroupsHtml
@@ -2410,11 +2418,12 @@ $espRestHtml
                 $gEnc = [System.Net.WebUtility]::HtmlEncode($gtr[0])
                 $tEnc = [System.Net.WebUtility]::HtmlEncode($gtr[1])
                 $rEnc = [System.Net.WebUtility]::HtmlEncode($gtr[2])
+                $rDisplay = if ($rEnc -and $rEnc -ne '-' -and $rEnc -ne 'No Filter') { '<code>' + $rEnc + '</code>' } else { $rEnc }
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-item policy-item-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;">'
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">' + $pEnc + '</span></div>'
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">' + $gEnc + '</span></div>'
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">' + $tEnc + '</span></div>'
-                $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rEnc + '</span></div>'
+                $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rDisplay + '</span></div>'
                 $cloudPCUserSettingsDeviceGroupsHtml += '</div>'
             }
             $cloudPCUserSettingsDeviceGroupsHtml = $cloudPCUserSettingsTableHeader + $cloudPCUserSettingsDeviceGroupsHtml
@@ -2460,7 +2469,7 @@ $userTable
         foreach ($gd in $DeviceGroupDetails) {
             $name = if ($gd.DisplayName) { $gd.DisplayName } else { "-" }
             $gType = if ($gd.GroupType) { $gd.GroupType } else { "Static" }
-            $ruleHtml = if ($gd.MembershipRule) { $gd.MembershipRule } else { "-" }
+            $ruleHtml = if ($gd.MembershipRule -and $gd.MembershipRule -ne "-") { '<code>' + $gd.MembershipRule + '</code>' } else { "-" }
             $encName = [System.Net.WebUtility]::HtmlEncode($name)
             $encType = [System.Net.WebUtility]::HtmlEncode($gType)
             $entraGroupListHtml += '<div class="policy-item policy-item-devicegroups" style="grid-template-columns: 2fr 1fr 3fr;">'
@@ -2649,12 +2658,12 @@ $AssignmentOverviewFragment
             startOnLoad: false,
             theme: isDark ? 'dark' : 'base',
             themeVariables: isDark ? {
-                primaryColor: '#0d9488', primaryTextColor: '#fff', primaryBorderColor: '#14b8a6',
-                lineColor: '#94a3b8', secondaryColor: '#134e4a', tertiaryColor: '#1a1a1a',
+                primaryColor: '#ea580c', primaryTextColor: '#fff', primaryBorderColor: '#c2410c',
+                lineColor: '#94a3b8', secondaryColor: '#4a2e10', tertiaryColor: '#1a1a1a',
                 background: '#0d0d0d', mainBkg: '#1a1a1a', secondBkg: '#262626',
                 fontSize: '16px', fontFamily: 'Segoe UI, system-ui, sans-serif'
             } : {
-                primaryColor: '#0f766e', primaryTextColor: '#fff', primaryBorderColor: '#115e59',
+                primaryColor: '#ea580c', primaryTextColor: '#fff', primaryBorderColor: '#c2410c',
                 lineColor: '#64748b', secondaryColor: '#ccfbf1', tertiaryColor: '#ffffff',
                 background: '#ffffff', mainBkg: '#f8fafc', secondBkg: '#e8ecf1',
                 fontSize: '16px', fontFamily: 'Segoe UI, system-ui, sans-serif'
@@ -2751,88 +2760,88 @@ $AssignmentOverviewFragment
 .flow-diagram{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:1rem;padding:1.5rem;font-size:1rem;line-height:1.5;width:100%;max-width:100%;}
 .flow-container{width:100%;max-width:100%;}
 .flow-node{flex-shrink:0;}
-.flow-device{background:linear-gradient(180deg,#0f766e 0%,#115e59 100%);color:#fff;padding:1rem 1.5rem;border-radius:12px;min-width:160px;max-width:100%;align-self:center;text-align:left;}
-.flow-arrow{color:#0d9488;font-size:1.5rem;flex-shrink:0;align-self:center;display:flex;justify-content:center;}
+.flow-device{background:linear-gradient(135deg,var(--accent),#c2410c);color:#fff;padding:1rem 1.5rem;border-radius:12px;min-width:160px;max-width:100%;align-self:center;text-align:left;}
+.flow-arrow{color:var(--accent);font-size:1.5rem;flex-shrink:0;align-self:center;display:flex;justify-content:center;}
 .flow-device-label{display:block;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;opacity:0.9;margin-bottom:0.35rem;}
 .flow-device-name{display:block;font-weight:600;font-size:1.1rem;word-break:break-word;}
-.flow-step{background:var(--card-bg);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;margin-bottom:1rem;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);}
-.flow-step .step-header{display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;font-weight:600;font-size:1rem;color:#fff;background:linear-gradient(180deg,#0f766e 0%,#115e59 100%);}
+.flow-step{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;margin-bottom:1rem;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);}
+.flow-step .step-header{display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;font-weight:600;font-size:1rem;color:#fff;background:linear-gradient(135deg,var(--accent),#c2410c);}
 .flow-step .step-content{padding:1rem;}
 .flow-step .step-toggle{display:inline-flex;align-items:center;gap:0.4rem;margin-bottom:0.75rem;}
 .flow-step .step-toggle i{transition:transform 0.2s ease;}
 .flow-step .step-toggle[aria-expanded="true"] i{transform:rotate(180deg);}
-.step-name{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-color);}
-.policy-category{background:var(--card-bg);border:1px solid var(--border-color,#e5e7eb);border-radius:8px;padding:1rem;margin-bottom:0.75rem;}
-.policy-category h5{color:var(--text-color);margin-bottom:0.6rem;font-size:0.9rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
-.policy-count{background:#0f766e;color:#fff;padding:4px 10px;border-radius:20px;font-size:0.7rem;font-weight:600;}
-.policy-table-header{display:grid;gap:0.75rem;padding:0.75rem 1rem;background:var(--bg-color);border:1px solid var(--border-color,#e5e7eb);border-radius:8px;margin-bottom:0.5rem;font-size:0.7rem;font-weight:700;color:var(--text-color);text-transform:uppercase;letter-spacing:0.5px;}
-.policy-item{display:grid;gap:0.75rem;padding:0.6rem 1rem;background:var(--card-bg);border:1px solid var(--border-color,#e5e7eb);border-radius:6px;margin-bottom:0.5rem;font-size:0.8rem;}
+.step-name{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-body);}
+.policy-category{background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:0.75rem;}
+.policy-category h5{color:var(--text-body);margin-bottom:0.6rem;font-size:0.9rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
+.policy-count{background:var(--accent);color:#fff;padding:4px 10px;border-radius:20px;font-size:0.7rem;font-weight:600;}
+.policy-table-header{display:grid;gap:0.75rem;padding:0.75rem 1rem;background:var(--bg-base);border:1px solid var(--border);border-radius:8px;margin-bottom:0.5rem;font-size:0.7rem;font-weight:700;color:var(--text-body);text-transform:uppercase;letter-spacing:0.5px;}
+.policy-item{display:grid;gap:0.75rem;padding:0.6rem 1rem;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;margin-bottom:0.5rem;font-size:0.8rem;}
 .policy-item:hover{background:rgba(0,0,0,0.02);}
 .policy-item-stacked{display:flex;flex-direction:column;gap:0.75rem;grid-template-columns:none !important;}
 .policy-item-stacked .flow-field{margin-bottom:0.25rem;}
 .policy-item-stacked .flow-field:last-child{margin-bottom:0;}
-.flow-field-label{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary,#6c757d);margin-bottom:0.2rem;}
-.flow-field-value{font-size:0.9rem;color:var(--text-color);word-wrap:break-word;overflow-wrap:break-word;}
+.flow-field-label{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:0.2rem;}
+.flow-field-value{font-size:0.9rem;color:var(--text-body);word-wrap:break-word;overflow-wrap:break-word;}
 .flow-field-value.entra-rule{font-family:ui-monospace,'Cascadia Code','Source Code Pro',Menlo,Consolas,monospace;font-size:0.75rem;word-break:break-all;background:rgba(0,0,0,0.06);padding:0.4rem 0.5rem;border-radius:4px;line-height:1.4;}
 .flow-field-value.entra-rule code{background:rgba(0,0,0,0.1);padding:0.15rem 0.4rem;border-radius:3px;font-size:0.7rem;}
-.policy-name{font-weight:600;color:var(--text-color);word-wrap:break-word;overflow-wrap:break-word;}
-.policy-assignment{font-weight:500;color:#0f766e;line-height:1.4;}
-.policy-filter{font-size:0.8rem;color:var(--text-secondary,#6c757d);line-height:1.4;word-wrap:break-word;}
+.policy-name{font-weight:600;color:var(--text-body);word-wrap:break-word;overflow-wrap:break-word;}
+.policy-assignment{font-weight:500;color:var(--accent);line-height:1.4;}
+.policy-filter{font-size:0.8rem;color:var(--text-muted);line-height:1.4;word-wrap:break-word;}
 .entra-group-row .entra-rule{font-family:ui-monospace,monospace;font-size:0.75rem;word-break:break-all;}
 .entra-group-row .entra-rule code{background:rgba(0,0,0,0.06);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;}
 [data-theme="dark"] .entra-group-row .entra-rule code{background:rgba(255,255,255,0.1);}
 .autopilot-config-section,.esp-config-section{margin-top:0.75rem;}
-.config-toggle{font-size:0.8rem;border-color:var(--border-color,#e5e7eb);color:var(--text-color);}
-.config-toggle:hover{background:#0f766e;border-color:#0f766e;color:#fff;}
+.config-toggle{font-size:0.8rem;border-color:var(--border);color:var(--text-body);}
+.config-toggle:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
 .config-toggle i{transition:transform 0.2s ease;}
 .config-toggle[aria-expanded="true"] i{transform:rotate(180deg);}
-.config-toggle[aria-expanded="true"]{background:#0f766e;border-color:#0f766e;color:#fff;}
-.flow-step .step-toggle.btn-outline-primary,.flow-step .btn-outline-primary.step-toggle{border-color:#0f766e;color:#0f766e;}
-.flow-step .step-toggle.btn-outline-primary:hover,.flow-step .btn-outline-primary.step-toggle:hover{background:#0f766e;border-color:#0f766e;color:#fff;}
-.autopilot-settings{background:rgba(0,0,0,0.03);border:1px solid var(--border-color,#e5e7eb);border-radius:6px;padding:0.75rem 1rem;margin-top:0.5rem;font-size:0.85rem;}
-.autopilot-settings dt{font-weight:600;color:var(--text-color);margin:0.4rem 0 0.1rem 0;}
-.autopilot-settings dd{margin:0 0 0.25rem 0;color:var(--text-secondary,#6c757d);}
+.config-toggle[aria-expanded="true"]{background:var(--accent);border-color:var(--accent);color:#fff;}
+.flow-step .step-toggle.btn-outline-primary,.flow-step .btn-outline-primary.step-toggle{border-color:var(--accent);color:var(--accent);}
+.flow-step .step-toggle.btn-outline-primary:hover,.flow-step .btn-outline-primary.step-toggle:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
+.autopilot-settings{background:rgba(0,0,0,0.03);border:1px solid var(--border);border-radius:6px;padding:0.75rem 1rem;margin-top:0.5rem;font-size:0.85rem;}
+.autopilot-settings dt{font-weight:600;color:var(--text-body);margin:0.4rem 0 0.1rem 0;}
+.autopilot-settings dd{margin:0 0 0.25rem 0;color:var(--text-muted);}
 .autopilot-settings dd:last-child{margin-bottom:0;}
 .esp-app-list{margin:0.25rem 0 0 0;padding-left:1.25rem;}
 .esp-app-list li{margin-bottom:0.15rem;}
-.flow-step-twocol .flow-col-header{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-color);}
-.flow-step-twocol .flow-col-device,.flow-step-twocol .flow-col-user{background:rgba(0,0,0,0.02);border-radius:8px;padding:1rem;border:1px solid var(--border-color,#e5e7eb);}
-[data-theme="dark"] .flow-step-twocol .flow-col-device,[data-theme="dark"] .flow-step-twocol .flow-col-user{background:rgba(255,255,255,0.04);border-color:var(--border-color);}
-[data-theme="dark"] .flow-step{background:var(--card-bg);border-color:var(--border-color);}
-[data-theme="dark"] .flow-step .step-header{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .flow-device{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .flow-arrow{color:var(--text-secondary);}
-[data-theme="dark"] .flow-step-twocol .flow-col-header{color:var(--text-color);}
-[data-theme="dark"] .step-name{color:var(--text-color);}
-[data-theme="dark"] .policy-category{background:var(--card-bg);border-color:var(--border-color);}
-[data-theme="dark"] .policy-category h5{color:var(--text-color);}
-[data-theme="dark"] .policy-table-header{background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-color);}
-[data-theme="dark"] .policy-item{background:var(--bg-tertiary);border-color:var(--border-color);}
+.flow-step-twocol .flow-col-header{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-body);}
+.flow-step-twocol .flow-col-device,.flow-step-twocol .flow-col-user{background:rgba(0,0,0,0.02);border-radius:8px;padding:1rem;border:1px solid var(--border);}
+[data-theme="dark"] .flow-step-twocol .flow-col-device,[data-theme="dark"] .flow-step-twocol .flow-col-user{background:rgba(255,255,255,0.04);border-color:var(--border);}
+[data-theme="dark"] .flow-step{background:var(--bg-elevated);border-color:var(--border);}
+[data-theme="dark"] .flow-step .step-header{background:var(--bg-warm);color:var(--text-body);}
+[data-theme="dark"] .flow-device{background:var(--bg-warm);color:var(--text-body);}
+[data-theme="dark"] .flow-arrow{color:var(--text-muted);}
+[data-theme="dark"] .flow-step-twocol .flow-col-header{color:var(--text-body);}
+[data-theme="dark"] .step-name{color:var(--text-body);}
+[data-theme="dark"] .policy-category{background:var(--bg-elevated);border-color:var(--border);}
+[data-theme="dark"] .policy-category h5{color:var(--text-body);}
+[data-theme="dark"] .policy-table-header{background:var(--bg-warm);border-color:var(--border);color:var(--text-body);}
+[data-theme="dark"] .policy-item{background:var(--bg-warm);border-color:var(--border);}
 [data-theme="dark"] .policy-item:hover{background:rgba(255,255,255,0.05);}
-[data-theme="dark"] .policy-name{color:var(--text-color);}
+[data-theme="dark"] .policy-name{color:var(--text-body);}
 [data-theme="dark"] .policy-assignment{color:#a3a3a3;}
-[data-theme="dark"] .policy-filter{color:var(--text-secondary);}
-[data-theme="dark"] .flow-field-label{color:var(--text-secondary);}
-[data-theme="dark"] .flow-field-value{color:var(--text-color);}
+[data-theme="dark"] .policy-filter{color:var(--text-muted);}
+[data-theme="dark"] .flow-field-label{color:var(--text-muted);}
+[data-theme="dark"] .flow-field-value{color:var(--text-body);}
 [data-theme="dark"] .flow-field-value.entra-rule{background:rgba(255,255,255,0.05);}
 [data-theme="dark"] .flow-field-value.entra-rule code{background:rgba(255,255,255,0.1);}
-[data-theme="dark"] .policy-empty .policy-empty-msg,[data-theme="dark"] .policy-empty-msg.text-muted{color:var(--text-secondary) !important;}
-[data-theme="dark"] .autopilot-settings{background:rgba(0,0,0,0.2);border-color:var(--border-color);}
-[data-theme="dark"] .autopilot-settings dt{color:var(--text-color);}
-[data-theme="dark"] .autopilot-settings dd{color:var(--text-secondary);}
+[data-theme="dark"] .policy-empty .policy-empty-msg,[data-theme="dark"] .policy-empty-msg.text-muted{color:var(--text-muted) !important;}
+[data-theme="dark"] .autopilot-settings{background:rgba(0,0,0,0.2);border-color:var(--border);}
+[data-theme="dark"] .autopilot-settings dt{color:var(--text-body);}
+[data-theme="dark"] .autopilot-settings dd{color:var(--text-muted);}
 .flow-diagram-wrapper{overflow-y:auto;overflow-x:auto;padding:0.5rem 0;}
 @media (max-width:576px){.flow-step-twocol .row{flex-direction:column;}}
-.arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-color) 0%,#cbd5e1 100%);border:1px solid var(--border-color);border-radius:16px;padding:2rem;margin:1rem 0;overflow:auto;min-height:520px;}
+.arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-base) 0%,#cbd5e1 100%);border:1px solid var(--border);border-radius:16px;padding:2rem;margin:1rem 0;overflow:auto;min-height:520px;}
 .arch-flow-horizontal .arch-diagram-wrapper{min-height:auto;padding:1rem 1rem;}
 .arch-diagram-svg{width:100%;height:auto;display:block;}
 .arch-diagram-svg .arch-box{filter:drop-shadow(0 2px 6px rgba(0,0,0,0.15));}
 .arch-diagram-svg .arch-box:hover{filter:drop-shadow(0 4px 12px rgba(0,0,0,0.2));}
-[data-theme="dark"] .arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-color) 0%,var(--card-bg) 100%);border-color:var(--border-color);}
+[data-theme="dark"] .arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-base) 0%,var(--bg-elevated) 100%);border-color:var(--border);}
 [data-theme="dark"] .arch-diagram-svg .arch-box{filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4));}
-#architecture h4,#architecture h4 i{color:var(--text-color) !important;}
-#architecture .text-muted,#architecture p.text-muted{color:var(--text-secondary) !important;}
-[data-theme="dark"] #diagram .p-4 > p.text-muted{color:var(--text-color) !important;}
-#architecture .p-4{color:var(--text-color);}
+#architecture h4,#architecture h4 i{color:var(--text-body) !important;}
+#architecture .text-muted,#architecture p.text-muted{color:var(--text-muted) !important;}
+[data-theme="dark"] #diagram .p-4 > p.text-muted{color:var(--text-body) !important;}
+#architecture .p-4{color:var(--text-body);}
 .arch-diagram-html .arch-flow{display:flex;flex-direction:column;align-items:center;gap:0;max-width:860px;margin:0 auto;}
 .arch-flow-horizontal .arch-flow{flex-direction:row;align-items:flex-start;flex-wrap:nowrap;gap:0;max-width:100%;margin:0;padding:0.5rem 0;overflow-x:auto;overflow-y:visible;justify-content:flex-start;}
 .arch-flow-horizontal .arch-step{flex:0 0 auto;min-width:90px;max-width:140px;padding:0.5rem 0.35rem;}
@@ -2866,7 +2875,7 @@ $AssignmentOverviewFragment
 .arch-diagram-html .arch-step{background:var(--arch-fill);color:#fff;border-radius:12px;padding:1rem 1.5rem;min-width:280px;max-width:100%;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.3);}
 .arch-diagram-html .arch-step-title{font-weight:600;font-size:1rem;}
 .arch-diagram-html .arch-step-sub{font-size:0.875rem;opacity:0.95;margin-top:0.25rem;word-break:break-word;}
-.arch-diagram-html .arch-arrow{color:var(--text-secondary,#64748b);font-size:1.25rem;padding:0.35rem 0;}
+.arch-diagram-html .arch-arrow{color:var(--text-muted);font-size:1.25rem;padding:0.35rem 0;}
 .arch-diagram-html .arch-step-device,.arch-diagram-html .arch-step-memberof{text-align:left;min-width:100%;width:100%;max-width:860px;}
 .arch-diagram-html .arch-step-device .arch-step-title,.arch-diagram-html .arch-step-memberof .arch-step-title{text-align:center;}
 .arch-diagram-html .arch-step-device .arch-group-table-wrap,.arch-diagram-html .arch-step-memberof .arch-group-table-wrap{margin-left:0;margin-right:0;width:100%;min-width:100%;}
@@ -2920,26 +2929,26 @@ $AssignmentOverviewFragment
 .arch-flow-horizontal .arch-diagram-html .arch-inner-title{font-size:0.8rem;}
 .arch-flow-horizontal .arch-diagram-html .arch-inner-sub{font-size:0.75rem;margin-top:0;}
 .arch-flow-horizontal .arch-diagram-html .arch-step-enrollment .arch-step-title{padding:0.5rem 0.6rem;}
-[data-theme="dark"] .arch-diagram-html .arch-arrow{color:var(--text-secondary);}
+[data-theme="dark"] .arch-diagram-html .arch-arrow{color:var(--text-muted);}
 [data-theme="dark"] .arch-flow-horizontal .arch-diagram-html .arch-step-memberof .arch-group-table td:nth-child(3){background:rgba(255,255,255,0.05);}
 /* --- Overview container (used by Get-AssignmentOverviewTabFragment) --- */
 .overview-container{background:var(--bg-elevated);border-radius:14px;padding:2rem;margin:1rem 0;}
 .overview-container::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);}
 .overview-header{text-align:center;margin-bottom:2rem;background:var(--bg-warm);color:var(--text);margin-left:-2rem;margin-right:-2rem;margin-top:-2rem;padding:2rem 2rem 1.5rem;border-radius:14px 14px 0 0;border-bottom:1px dashed var(--border-dashed);}
-.overview-header h2{font-family:'Playfair Display',serif;font-size:1.75rem;font-weight:800;margin-bottom:0.5rem;color:var(--text);letter-spacing:-0.02em;}
-.overview-header p{font-family:'Source Serif 4',serif;font-size:1rem;color:var(--text-muted);margin:0;}
+.overview-header h2{font-family:'Geist',-apple-system,sans-serif;font-size:1.75rem;font-weight:800;margin-bottom:0.5rem;color:var(--text);letter-spacing:-0.02em;}
+.overview-header p{font-family:'Geist',-apple-system,sans-serif;font-size:1rem;color:var(--text-muted);margin:0;}
 .summary-card{background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:1.5rem;text-align:center;}
 .summary-card .card-icon{width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 0.75rem;font-size:1.25rem;color:#fff;}
 .summary-card.border-primary .card-icon{background:var(--tile-steel);}
 .summary-card.border-danger .card-icon{background:var(--tile-rose);}
 .overview-tiles-row .summary-card{min-height:100px;padding:0.75rem 1rem;display:flex;flex-direction:column;justify-content:center;align-items:center;}
 .overview-tiles-row .summary-card .card-icon{width:36px;height:36px;font-size:1rem;margin:0 auto 0.4rem;}
-.overview-tiles-row .summary-card .card-title{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:800;margin:0.2rem 0;color:var(--text);}
+.overview-tiles-row .summary-card .card-title{font-family:'Geist',-apple-system,sans-serif;font-size:1.5rem;font-weight:800;margin:0.2rem 0;color:var(--text);}
 .overview-tiles-row .summary-card .card-text{min-height:2em;font-size:0.8rem;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text-muted);}
 /* --- Modern table (used by overview fragment) --- */
 .modern-table-container{background:var(--bg-elevated);border-radius:14px;overflow:hidden;border:1px solid var(--border);margin:1rem 0;}
 .modern-table-header{background:var(--bg-warm);padding:1rem 1.25rem;border-bottom:1px dashed var(--border-dashed);color:var(--text);}
-.modern-table-header h5{margin:0;font-family:'JetBrains Mono',monospace;font-size:0.78rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-body);}
+.modern-table-header h5{margin:0;font-family:'Geist Mono',ui-monospace,monospace;font-size:0.78rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-body);}
 .modern-table-header small{color:var(--text-muted);font-size:0.75rem;}
 .modern-table-body{padding:0;}
 .modern-table{margin:0;}
@@ -2951,14 +2960,14 @@ $AssignmentOverviewFragment
 .assignment-filters-modern{background:var(--bg-elevated);border-bottom:1px solid var(--border);padding:1rem 1.25rem;}
 .assignment-filters-modern .assignment-filters-inner{display:flex;flex-wrap:wrap;align-items:flex-end;gap:1rem;}
 .assignment-filters-modern .filter-group{display:flex;flex-direction:column;gap:0.25rem;}
-.assignment-filters-modern .filter-label{font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:0;font-family:'JetBrains Mono',monospace;}
-.assignment-filters-modern .filter-select{min-width:140px;padding:0.5rem 0.75rem;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);font-size:0.78rem;color:var(--input-color);font-family:'JetBrains Mono',monospace;}
-.assignment-filters-modern .filter-dropdown-btn{min-width:140px;text-align:left;font-family:'JetBrains Mono',monospace;font-size:0.78rem;}
+.assignment-filters-modern .filter-label{font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:0;font-family:'Geist Mono',ui-monospace,monospace;}
+.assignment-filters-modern .filter-select{min-width:140px;padding:0.5rem 0.75rem;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);font-size:0.78rem;color:var(--input-color);font-family:'Geist Mono',ui-monospace,monospace;}
+.assignment-filters-modern .filter-dropdown-btn{min-width:140px;text-align:left;font-family:'Geist Mono',ui-monospace,monospace;font-size:0.78rem;}
 .assignment-filters-modern .filter-checkbox-dropdown{max-height:260px;overflow-y:auto;padding:0.25rem;}
 .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item{white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:0.5rem;}
 .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item input{margin:0;cursor:pointer;}
 .assignment-filters-modern .filter-checkbox-dropdown label{margin:0;cursor:pointer;width:100%;}
-.assignment-filters-modern .filter-reset-btn{display:inline-flex;align-items:center;gap:0.35rem;padding:0.5rem 0.9rem;border-radius:6px;border:1px solid var(--button-border);background:var(--button-bg);font-size:0.78rem;color:var(--button-color);cursor:pointer;height:2.15rem;font-family:'JetBrains Mono',monospace;}
+.assignment-filters-modern .filter-reset-btn{display:inline-flex;align-items:center;gap:0.35rem;padding:0.5rem 0.9rem;border-radius:6px;border:1px solid var(--button-border);background:var(--button-bg);font-size:0.78rem;color:var(--button-color);cursor:pointer;height:2.15rem;font-family:'Geist Mono',ui-monospace,monospace;}
 .assignment-filters-modern .filter-reset-btn:hover{background:var(--button-hover-bg);}
 [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn{background:var(--input-bg);border-color:var(--input-border);color:var(--input-color);}
 [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:hover,[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:focus,[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn.show{background:var(--bg-warm);border-color:var(--border);color:var(--text-body);}
@@ -2969,7 +2978,7 @@ $AssignmentOverviewFragment
 [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown input.filter-cb{accent-color:var(--accent);}
 "@
 
-    $html = New-RKSolutionsReportTemplate `
+    $html = Get-RKSolutionsReportTemplate `
         -TenantName $TenantName `
         -ReportTitle 'Enrollment' `
         -ReportSlug 'intune-enrollment-device' `

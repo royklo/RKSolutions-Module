@@ -32,7 +32,8 @@ function Connect-RKGraph {
             'Mail.Send',
             'CloudLicensing.Read',
             'CloudPC.Read.All',
-            'CustomSecAttributeAssignment.Read.All'
+            'CustomSecAttributeAssignment.Read.All',
+            'CustomSecAttributeDefinition.Read.All'
         ),
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
