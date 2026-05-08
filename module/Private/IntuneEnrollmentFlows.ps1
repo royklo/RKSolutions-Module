@@ -62,7 +62,7 @@ function Get-GroupMemberTargetType {
                 elseif ($odataType -eq '#microsoft.graph.user') { $result = 'User' }
             }
         }
-        catch { }
+        catch { Write-Verbose "Get-GroupMemberTargetType: Failed to query members for group $GroupId -- $_" }
     }
     $script:GroupMemberTypeCache[$GroupId] = $result
     return $result
@@ -114,7 +114,10 @@ function Get-AutopilotProfileConfigByDisplayName {
             Locale             = if ($autopilotProfile.locale) { $autopilotProfile.locale } else { "-" }
         }
     }
-    catch { return $null }
+    catch {
+        Write-Verbose "Get-AutopilotProfileConfigByDisplayName: Failed for '$DisplayName' -- $_"
+        return $null
+    }
 }
 
 function Get-MobileAppDisplayName {
@@ -180,7 +183,10 @@ function Get-EspConfigByDisplayName {
             SelectedMobileAppIds            = $selectedIds
         }
     }
-    catch { return $null }
+    catch {
+        Write-Verbose "Get-EspConfigByDisplayName: Failed for '$DisplayName' -- $_"
+        return $null
+    }
 }
 
 function Get-GroupParentGroupNames {
@@ -1675,317 +1681,145 @@ __PH_FILTERS__
 function New-AssignmentOverviewHtmlReport {
     param([Parameter(Mandatory)][array]$PolicyAssignments, [string]$TenantName = "Intune Tenant", [Parameter(Mandatory)][string]$OutputPath)
     $fragment = Get-AssignmentOverviewTabFragment -PolicyAssignments $PolicyAssignments -TenantName $TenantName
-    # Script in literal here-string so $ in JavaScript are not expanded by PowerShell (same approach as device report).
-    $assignmentOverviewScript = @'
-document.addEventListener('DOMContentLoaded', function() {
-  var themeToggle = document.getElementById('themeToggle');
-  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
-  function applyTheme(isDark) {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    if (themeToggle) themeToggle.checked = isDark;
-  }
-  var saved = localStorage.getItem('theme');
-  if (saved === 'dark' || saved === 'light') {
-    applyTheme(saved === 'dark');
-  } else {
-    applyTheme(prefersDark.matches);
-  }
-  if (themeToggle) themeToggle.addEventListener('change', function() {
-    var isDark = this.checked;
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-  });
-  prefersDark.addEventListener('change', function(e) {
-    if (localStorage.getItem('theme') === null) {
-      applyTheme(e.matches);
-    }
-  });
-  if (jQuery && jQuery.fn.DataTable && jQuery('#allAssignmentsTable').length > 0) {
-    var $allTbl = jQuery('#allAssignmentsTable');
-    var preCategories = [], preTargets = [], preFilters = [];
-    function normFilter(s) { return String(s||'').replace(/\s*\((?:Include|Exclude)$/i, '').trim() || String(s||''); }
-    $allTbl.find('tbody tr').each(function() {
-      var $row = jQuery(this);
-      var $cells = $row.find('td');
-      if ($cells.length >= 4) {
-        var c = jQuery.trim($cells.eq(1).text()); if (c && preCategories.indexOf(c) === -1) preCategories.push(c);
-        var t = jQuery.trim($cells.eq(2).text()); if (t && preTargets.indexOf(t) === -1) preTargets.push(t);
-        var f = normFilter(jQuery.trim($cells.eq(3).text())); if (f && preFilters.indexOf(f) === -1) preFilters.push(f);
-      }
-    });
-    preCategories.sort(); preTargets.sort(); preFilters.sort();
-    var at = $allTbl.DataTable({
-      responsive: true, pageLength: 25, order: [[1,'asc'],[0,'asc']], dom: 'Bfrtip', buttons: ['copy','csv','excel','pdf','print'],
-            columnDefs: [
-                { targets: [0,1,2,3], className: 'text-start' },
-                { targets: 0, width: '25%' }, { targets: 1, width: '15%' }, { targets: 2, width: '15%' }, { targets: 3, width: '20%' }
-            ],
-      initComplete: function() {
-        var api = this.api();
-        function escOv(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-        function getOvChecked(menuId){ return jQuery('#'+menuId+' input.filter-cb:checked').map(function(){ return jQuery(this).attr('data-value'); }).get(); }
-        function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; jQuery('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
-        function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$/i, '').trim() || s; }
-        function fillOvDropdownFromArray(menuId, btnId, values, label) {
-          var menu = jQuery('#'+menuId); if (!menu.length) return; menu.empty();
-          jQuery.each(values, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
-          menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
-          menu.on('click', function(e){ e.stopPropagation(); });
-          updateOvBtn(btnId, menuId, label);
-        }
-        fillOvDropdownFromArray('overviewFilterCategoryMenu','overviewFilterCategoryBtn', preCategories, 'Category');
-        fillOvDropdownFromArray('overviewFilterTargetMenu','overviewFilterTargetBtn', preTargets, 'Target');
-        fillOvDropdownFromArray('overviewFilterFilterMenu','overviewFilterFilterBtn', preFilters, 'Filter');
-        var overviewSearchFn = function(settings, data, dataIndex) {
-          if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
-          if (jQuery('#overviewFilterHideNotAssigned').length && jQuery('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
-          var searchStr = ''; try { var searchApi = new jQuery.fn.dataTable.Api(settings); searchStr = (searchApi.search() || '').trim(); } catch (e) {}
-          if (searchStr) { var found = false; for (var i = 0; i < data.length; i++) { if (data[i] && data[i].toString().toLowerCase().indexOf(searchStr.toLowerCase()) !== -1) { found = true; break; } } if (!found) return false; }
-          var c = getOvChecked('overviewFilterCategoryMenu'); if (c.length && jQuery.inArray(data[1], c) === -1) return false;
-          var t = getOvChecked('overviewFilterTargetMenu'); if (t.length && jQuery.inArray(data[2], t) === -1) return false;
-          var rowFilterNorm = normalizeFilterName(data[3]); var f = getOvChecked('overviewFilterFilterMenu'); if (f.length && jQuery.inArray(rowFilterNorm, f) === -1) return false;
-          return true;
-        };
-        jQuery.fn.dataTable.ext.search.push(overviewSearchFn);
-        var hideNotAssigned = jQuery('#overviewFilterHideNotAssigned');
-        if (hideNotAssigned.length) hideNotAssigned.on('change', function(){ api.draw(); });
-        var resetBtn = jQuery('#overviewFiltersReset');
-        if (resetBtn.length) resetBtn.on('click', function(){
-          jQuery('#overviewFilterCategoryMenu,#overviewFilterTargetMenu,#overviewFilterFilterMenu').find('input.filter-cb').prop('checked', false);
-          updateOvBtn('overviewFilterCategoryBtn','overviewFilterCategoryMenu','Category'); updateOvBtn('overviewFilterTargetBtn','overviewFilterTargetMenu','Target'); updateOvBtn('overviewFilterFilterBtn','overviewFilterFilterMenu','Filter');
-          hideNotAssigned.val('');
-          api.draw();
-        });
-      }
-    });
-    jQuery('#showAllAssignments').prop('checked', false);
-    jQuery('#showAllAssignments').on('change', function() {
-      var dt = jQuery('#allAssignmentsTable').DataTable();
-      var paginateControls = jQuery('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
-      if (this.checked) { dt.page.len(-1); paginateControls.hide(); } else { dt.page.len(25); paginateControls.show(); }
-      dt.draw();
-    });
-  }
-  if (jQuery && jQuery.fn.DataTable && jQuery('#filtersTable').length > 0) {
-    var filtersTable = jQuery('#filtersTable').DataTable({
-      responsive: true, pageLength: 10, order: [[3, 'desc']],
-      dom: 'Bfrtip', buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
-            columnDefs: [
-                { targets: [0,1,2,3], className: 'text-start' },
-                { targets: 0, width: '20%' }, { targets: 1, width: '40%' }, { targets: 2, width: '15%' },
-                { targets: 3, width: '25%' }
-            ]
-    });
-    jQuery('#showAllFilters').prop('checked', false);
-    jQuery('#showAllFilters').on('change', function() {
-      var isShowAll = this.checked;
-      var paginateControls = jQuery('#filtersTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
-      if (isShowAll) { filtersTable.page.len(-1); paginateControls.hide(); }
-      else { filtersTable.page.len(10); paginateControls.show(); }
-      filtersTable.draw();
-    });
-  }
-});
-'@
-    $html = @"
-<!DOCTYPE html>
-<html lang=`"en`">
-<head>
-    <meta charset=`"UTF-8`">
-    <meta name=`"viewport`" content=`"width=device-width, initial-scale=1.0`">
-    <title>$TenantName Intune Enrollment Flow Visualization</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <style>
-        :root { --primary-color: #0078d4; --secondary-color: #2b88d8; --accent-color: #107c10; --bg-color: #e2e8f0; --card-bg: #eef2f7; --text-color: #334155; --text-secondary: #64748b; --border-color: #cbd5e1; --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05); --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); --bg-secondary: #e8ecf1; --bg-tertiary: #e2e8f0; --table-hover-bg: rgba(0,0,0,0.04); }
-        [data-theme="dark"] { --bg-color: #0d0d0d; --card-bg: #1a1a1a; --text-color: #e5e5e5; --text-secondary: #a3a3a3; --border-color: #404040; --bg-secondary: #1a1a1a; --bg-tertiary: #262626; --table-hover-bg: rgba(255,255,255,0.05); }
-        body { background: var(--bg-color); color: var(--text-color); min-height: 100vh; font-family: Segoe UI, Roboto, sans-serif; }
-        .app-container { min-height: 100vh; padding: 0; display: flex; flex-direction: column; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; background: var(--card-bg); flex: 1; }
-        .theme-toggle { position: absolute; top: 10px; right: 10px; z-index: 1050; display: flex; align-items: center; gap: 6px; background-color: var(--card-bg); padding: 6px 10px; border-radius: 30px; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); }
-        .theme-toggle-switch { position: relative; display: inline-block; width: 40px; height: 20px; }
-        .theme-toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .theme-toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 20px; }
-        .theme-toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        input:checked + .theme-toggle-slider { background-color: #334155; }
-        input:checked + .theme-toggle-slider:before { transform: translateX(20px); }
-        .theme-icon { font-size: 12px; color: var(--text-color); }
-        .dashboard-header { background: linear-gradient(180deg, #1e293b 0%, #334155 100%); color: #fff; padding: 3rem 2rem; text-align: center; position: relative; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); border-bottom: 3px solid #475569; }
-        .dashboard-title { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 1.5rem; margin-bottom: 1rem; }
-        .dashboard-title h1 { margin: 0; font-size: 2.5rem; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
-        .logo { height: 50px; width: 50px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.3)); }
-        .report-date { font-size: 0.9375rem; color: rgba(255,255,255,0.88); position: relative; z-index: 2; background: rgba(255,255,255,0.08); padding: 0.6rem 1.25rem; border-radius: 999px; border: 1px solid rgba(255,255,255,0.15); display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 500; }
-        .overview-container { background: linear-gradient(135deg, var(--bg-color) 0%, var(--bg-secondary) 100%); border-radius: 16px; padding: 2rem; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; }
-        .overview-container::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #475569; }
-        .overview-header { text-align: center; margin-bottom: 2.5rem; background: linear-gradient(180deg, #1e293b 0%, #334155 100%); color: #fff; margin-left: -2rem; margin-right: -2rem; margin-top: -2rem; padding: 2rem 2rem 1.5rem; border-radius: 16px 16px 0 0; border-bottom: 2px solid rgba(255,255,255,0.06); }
-        .overview-header h2 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff; letter-spacing: -0.02em; }
-        .overview-header p { font-size: 1.125rem; color: rgba(255,255,255,0.9); margin: 0; }
-        .summary-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease; box-shadow: var(--shadow-sm); min-height: 160px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .overview-tiles-row .summary-card { min-height: 100px; padding: 0.75rem 1rem; }
-        .overview-tiles-row .summary-card .card-icon { width: 36px; height: 36px; font-size: 1rem; margin: 0 auto 0.4rem; }
-        .overview-tiles-row .summary-card .card-title { font-size: 1.5rem; margin: 0.2rem 0; }
-        .overview-tiles-row .summary-card .card-text { min-height: 2em; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; text-align: center; }
-        .summary-card .card-icon { width: 60px; height: 60px; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-size: 1.5rem; color: white; }
-        .summary-card.border-primary .card-icon { background: linear-gradient(135deg, #0078d4, #106ebe); }
-        .summary-card.border-success .card-icon { background: linear-gradient(135deg, #107c10, #0e6e0e); }
-        .summary-card.border-warning .card-icon { background: linear-gradient(135deg, #ffc107, #e0a800); }
-        .summary-card.border-danger .card-icon { background: linear-gradient(135deg, #d83b01, #c13401); }
-        .summary-card .card-title { font-size: 2.5rem; font-weight: 700; margin: 0.5rem 0; }
-        .summary-card .card-text { font-size: 0.9rem; font-weight: 500; color: var(--text-secondary); margin: 0; line-height: 1.4; text-align: center; }
-        .modern-table-container { background: var(--card-bg); border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; border: 1px solid var(--border-color); }
-        .modern-table-header { background: linear-gradient(180deg, #1e293b 0%, #334155 100%); padding: 1.5rem; border-bottom: 2px solid #475569; color: #fff; }
-        .modern-table-header h5 { margin: 0; font-weight: 600; font-size: 1.25rem; color: #fff; }
-        .modern-table-header small { color: rgba(255,255,255,0.85); font-size: 0.875rem; }
-        .modern-table-body { padding: 0; }
-        .modern-table { margin: 0; }
-        .modern-table thead th { background: var(--bg-secondary); border: none; font-weight: 600; font-size: 0.875rem; padding: 1rem 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
-        .modern-table tbody tr { border-bottom: 1px solid var(--border-color); transition: background-color 0.2s ease; }
-        .modern-table tbody tr:hover { background-color: var(--table-hover-bg); }
-        .modern-table tbody td { padding: 1rem 0.75rem; border: none; vertical-align: middle; }
-        .assignment-filters-modern { background: linear-gradient(180deg, var(--card-bg) 0%, var(--bg-secondary) 100%); border-bottom: 1px solid var(--border-color); padding: 1rem 1.25rem; }
-        .assignment-filters-modern .assignment-filters-inner { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem; }
-        .assignment-filters-modern .filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
-        .assignment-filters-modern .filter-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); margin: 0; }
-        .assignment-filters-modern .filter-select { min-width: 140px; padding: 0.5rem 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); font-size: 0.875rem; color: var(--text-color); }
-        .assignment-filters-modern .filter-reset-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--card-bg); font-size: 0.875rem; color: var(--text-secondary); cursor: pointer; height: 2.15rem; }
-        .assignment-filters-modern .filter-multiselect { min-height: 80px; min-width: 160px; }
-        .assignment-filters-modern .filter-checkbox-group { display: flex; flex-direction: column; justify-content: flex-end; }
-        .assignment-filters-modern .filter-checkbox-label { font-size: 0.875rem; color: var(--text-color); margin: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
-        [data-theme="dark"] .assignment-filters-modern { background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--card-bg) 100%); border-color: var(--border-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-select, [data-theme="dark"] .assignment-filters-modern .filter-reset-btn { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn { background: var(--card-bg); border-color: var(--border-color); color: var(--text-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:hover, [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:focus, [data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn.show { background: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown { background: var(--card-bg); border-color: var(--border-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item { color: var(--text-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item:hover { background: var(--bg-tertiary); color: var(--text-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown label { color: var(--text-color); }
-        [data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown input.filter-cb { accent-color: #a3a3a3; }
-        [data-theme="dark"] .dashboard-header { background: linear-gradient(180deg, #171717 0%, #262626 100%); border-bottom-color: var(--border-color); box-shadow: none; }
-        [data-theme="dark"] .dashboard-title h1 { color: var(--text-color); }
-        [data-theme="dark"] .report-date { background: rgba(255,255,255,0.06); border-color: var(--border-color); color: var(--text-secondary); }
-        [data-theme="dark"] .overview-header { background: var(--bg-tertiary); color: var(--text-color); border-bottom-color: var(--border-color); }
-        [data-theme="dark"] .overview-header h2 { color: var(--text-color); }
-        [data-theme="dark"] .overview-header p { color: var(--text-secondary); opacity: 1; }
-        [data-theme="dark"] .table, [data-theme="dark"] .modern-table { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
-        [data-theme="dark"] .table thead th, [data-theme="dark"] .modern-table thead th { background: var(--bg-tertiary); color: var(--text-color); border-color: var(--border-color); }
-        [data-theme="dark"] .table tbody td, [data-theme="dark"] .modern-table tbody td { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
-        [data-theme="dark"] .table tbody tr:hover td, [data-theme="dark"] .modern-table tbody tr:hover td { background: var(--table-hover-bg); }
-        [data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) td { background: var(--bg-secondary); }
-        [data-theme="dark"] .dataTables_wrapper { color: var(--text-color); background: var(--card-bg); border-color: var(--border-color); }
-        [data-theme="dark"] .dataTables_wrapper .table { background: var(--card-bg); color: var(--text-color); }
-        [data-theme="dark"] .modern-table-container .modern-table-body, [data-theme="dark"] .modern-table-container .table-responsive { background: var(--card-bg); }
-        [data-theme="dark"] .modern-table-container { background: var(--card-bg); }
-        [data-theme="dark"] .modern-table-header { background: var(--bg-tertiary); color: var(--text-color); border-bottom-color: var(--border-color); }
-        [data-theme="dark"] .modern-table-header h5, [data-theme="dark"] .modern-table-header small { color: var(--text-color); }
-        [data-theme="dark"] footer { background: linear-gradient(180deg, #171717 0%, #262626 100%); border-top-color: var(--border-color); }
-        [data-theme="dark"] .dataTables_filter input, [data-theme="dark"] .dataTables_length select { background: var(--bg-tertiary); color: var(--text-color); border-color: var(--border-color); }
-        [data-theme="dark"] .dataTables_info { color: var(--text-secondary); }
-        [data-theme="dark"] .dataTables_paginate .page-link { background: var(--card-bg); color: var(--text-color); border-color: var(--border-color); }
-        [data-theme="dark"] .dataTables_paginate .page-link:hover { background: var(--bg-tertiary); color: var(--text-color); }
-        [data-theme="dark"] .dataTables_paginate .page-item.active .page-link { background: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-color); }
-        [data-theme="dark"] .dataTables_paginate .page-item.disabled .page-link { background: var(--bg-secondary); color: var(--text-secondary); }
-        [data-theme="dark"] .dt-button { background: var(--bg-tertiary); color: var(--text-color); border-color: var(--border-color); }
-        [data-theme="dark"] .dt-button:hover { background: var(--table-hover-bg); color: var(--text-color); }
-        footer { background: linear-gradient(180deg, #1e293b 0%, #334155 100%); color: rgba(255,255,255,0.9); padding: 2rem 0 1rem 0; margin-top: 3rem; border-top: 3px solid #475569; }
-        .footer-content { max-width: 1200px; margin: 0 auto; padding: 0 1rem; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2rem; }
-        .footer-brand { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
-        .footer-description { font-size: 0.85rem; opacity: 0.9; margin: 0; }
-        .footer-center { text-align: center; }
-        .footer-logo { width: 40px; height: 40px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5rem; font-size: 1.2rem; font-weight: bold; }
-        .footer-tagline { font-size: 0.8rem; opacity: 0.8; margin: 0; }
-        .footer-links { text-align: right; }
-        .footer-social { display: flex; gap: 1rem; justify-content: flex-end; margin-bottom: 0.5rem; }
-        .footer-social a { color: rgba(255,255,255,0.8); transition: all 0.3s ease; }
-        .footer-copyright { font-size: 0.75rem; opacity: 0.7; margin: 0; }
-        .footer-bottom { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); text-align: center; }
-        .footer-tech-stack { font-size: 0.7rem; opacity: 0.6; margin: 0.5rem 0 0 0; }
-        .tech-badge { display: inline-block; background: rgba(255,255,255,0.15); padding: 0.2rem 0.5rem; border-radius: 6px; margin: 0 0.2rem; }
-    </style>
-</head>
-<body>
-    <div class="theme-toggle">
-        <div class="theme-icon"><i class="fas fa-sun"></i></div>
-        <label class="theme-toggle-switch">
-            <input type="checkbox" id="themeToggle">
-            <span class="theme-toggle-slider"></span>
-        </label>
-        <div class="theme-icon"><i class="fas fa-moon"></i></div>
-    </div>
-    <div class="app-container">
-        <div class="container">
-            <div class="dashboard-header">
-                <div class="dashboard-title">
-                    <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-                        <path fill="#ff5722" d="M6 6H22V22H6z" transform="rotate(-180 14 14)"/>
-                        <path fill="#4caf50" d="M26 6H42V22H26z" transform="rotate(-180 34 14)"/>
-                        <path fill="#ffc107" d="M6 26H22V42H6z" transform="rotate(-180 14 34)"/>
-                        <path fill="#03a9f4" d="M26 26H42V42H26z" transform="rotate(-180 34 34)"/>
-                    </svg>
-                    <h1>$TenantName Enrollment Flow Visualization</h1>
-                </div>
-                <div class="report-date">
-                    <i class="fas fa-calendar-alt me-2"></i>
-                    Report generated on: $(Get-Date -Format 'MMMM dd, yyyy \a\t HH:mm')
-                </div>
+
+    # Calculate stats for tiles
+    $totalPolicies = if ($PolicyAssignments) { ($PolicyAssignments | Select-Object -Property PolicyName -Unique).Count } else { 0 }
+    $unassignedPolicies = if ($PolicyAssignments) { ($PolicyAssignments | Where-Object { $_.AssignmentType -eq "Not Assigned" } | Select-Object -Property PolicyName -Unique).Count } else { 0 }
+    $totalAssignments = if ($PolicyAssignments) { $PolicyAssignments.Count } else { 0 }
+    $filtersUsed = ($PolicyAssignments | Where-Object { $_.FilterName -and $_.FilterName -ne "No Filter" -and $_.FilterName -ne "Filter Not Found" } | Select-Object -Property FilterName -Unique).Count
+
+    $statsCardsHtml = @"
+            <div class="rk-stat-tile t-rust">
+                <div class="rk-stat-eyebrow">TOTAL POLICIES</div>
+                <div class="rk-stat-number">$totalPolicies</div>
+                <div class="rk-stat-caption">Policies, apps &amp; scripts</div>
             </div>
-            <ul class="nav nav-tabs" id="flowTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="assignment-overview-tab" data-bs-toggle="tab" data-bs-target="#assignment-overview" type="button" role="tab" aria-controls="assignment-overview" aria-selected="true">
-                        <i class="fas fa-chart-pie me-2"></i>Assignment Overview
-                    </button>
-                </li>
-            </ul>
-            <div class="tab-content" id="flowTabContent">
-                <div class="tab-pane fade show active" id="assignment-overview" role="tabpanel" aria-labelledby="assignment-overview-tab" tabindex="0">
-$fragment
-                </div>
+            <div class="rk-stat-tile t-olive">
+                <div class="rk-stat-eyebrow">TOTAL ASSIGNMENTS</div>
+                <div class="rk-stat-number">$totalAssignments</div>
+                <div class="rk-stat-caption">Assignment entries</div>
             </div>
-        </div>
-    </div>
-    <footer>
-        <div class="footer-content">
-            <div class="footer-info">
-                <div class="footer-brand">RK Solutions</div>
-                <p class="footer-description">Helping IT professionals with Microsoft 365 and Intune reporting tools and insights</p>
+            <div class="rk-stat-tile t-steel">
+                <div class="rk-stat-eyebrow">UNASSIGNED</div>
+                <div class="rk-stat-number">$unassignedPolicies</div>
+                <div class="rk-stat-caption">Policies without assignment</div>
             </div>
-            <div class="footer-center">
-                <div class="footer-logo">RK</div>
-                <p class="footer-tagline">Practical IT Solutions & Insights</p>
+            <div class="rk-stat-tile t-rose">
+                <div class="rk-stat-eyebrow">FILTERS IN USE</div>
+                <div class="rk-stat-number">$filtersUsed</div>
+                <div class="rk-stat-caption">Unique assignment filters</div>
             </div>
-            <div class="footer-links">
-                <div class="footer-social">
-                    <a href="https://rksolutions.nl" title="Visit RK Solutions Blog" target="_blank">🌐</a>
-                    <a href="https://github.com/royklo" title="GitHub" target="_blank">🔗</a>
-                    <a href="https://linkedin.com/in/roy-klooster" title="LinkedIn" target="_blank">💼</a>
-                </div>
-                <p class="footer-copyright">© 2025 Roy Klooster - RK Solutions</p>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p class="footer-copyright">Generated on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
-            <p class="footer-tech-stack">
-                <span class="tech-badge">PowerShell</span>
-                <span class="tech-badge">Microsoft Graph</span>
-                <span class="tech-badge">Intune</span>
-                <span class="tech-badge">HTML5</span>
-            </p>
-        </div>
-    </footer>
-    <script>
-$assignmentOverviewScript
-    </script>
-</body>
-</html>
 "@
+
+    # Build body content with the fragment and DataTables/filter JS
+    $bodyContentHtml = @"
+    <div class="rk-card">
+        <div class="rk-card-body">
+$fragment
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    `$(document).ready(function() {
+        if (`$.fn.DataTable && `$('#allAssignmentsTable').length > 0) {
+            var `$allTbl = `$('#allAssignmentsTable');
+            var preCategories = [], preTargets = [], preFilters = [];
+            function normFilter(s) { return String(s||'').replace(/\s*\((?:Include|Exclude)$$/i, '').trim() || String(s||''); }
+            `$allTbl.find('tbody tr').each(function() {
+                var `$row = `$(this);
+                var `$cells = `$row.find('td');
+                if (`$cells.length >= 4) {
+                    var c = `$.trim(`$cells.eq(1).text()); if (c && preCategories.indexOf(c) === -1) preCategories.push(c);
+                    var t = `$.trim(`$cells.eq(2).text()); if (t && preTargets.indexOf(t) === -1) preTargets.push(t);
+                    var f = normFilter(`$.trim(`$cells.eq(3).text())); if (f && preFilters.indexOf(f) === -1) preFilters.push(f);
+                }
+            });
+            preCategories.sort(); preTargets.sort(); preFilters.sort();
+            var at = initRKTable('#allAssignmentsTable', {
+                pageLength: 25, order: [[1,'asc'],[0,'asc']],
+                columnDefs: [
+                    { targets: [0,1,2,3], className: 'text-start' },
+                    { targets: 0, width: '25%' }, { targets: 1, width: '15%' }, { targets: 2, width: '15%' }, { targets: 3, width: '20%' }
+                ],
+                initComplete: function() {
+                    var api = this.api();
+                    function escOv(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+                    function getOvChecked(menuId){ return `$('#'+menuId+' input.filter-cb:checked').map(function(){ return `$(this).attr('data-value'); }).get(); }
+                    function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; `$('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
+                    function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$$/i, '').trim() || s; }
+                    function fillOvDropdownFromArray(menuId, btnId, values, label) {
+                        var menu = `$('#'+menuId); if (!menu.length) return; menu.empty();
+                        `$.each(values, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
+                        menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
+                        menu.on('click', function(e){ e.stopPropagation(); });
+                        updateOvBtn(btnId, menuId, label);
+                    }
+                    fillOvDropdownFromArray('overviewFilterCategoryMenu','overviewFilterCategoryBtn', preCategories, 'Category');
+                    fillOvDropdownFromArray('overviewFilterTargetMenu','overviewFilterTargetBtn', preTargets, 'Target');
+                    fillOvDropdownFromArray('overviewFilterFilterMenu','overviewFilterFilterBtn', preFilters, 'Filter');
+                    var overviewSearchFn = function(settings, data, dataIndex) {
+                        if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
+                        if (`$('#overviewFilterHideNotAssigned').length && `$('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
+                        var searchStr = ''; try { var searchApi = new `$.fn.dataTable.Api(settings); searchStr = (searchApi.search() || '').trim(); } catch (e) {}
+                        if (searchStr) { var found = false; for (var i = 0; i < data.length; i++) { if (data[i] && data[i].toString().toLowerCase().indexOf(searchStr.toLowerCase()) !== -1) { found = true; break; } } if (!found) return false; }
+                        var c = getOvChecked('overviewFilterCategoryMenu'); if (c.length && `$.inArray(data[1], c) === -1) return false;
+                        var t = getOvChecked('overviewFilterTargetMenu'); if (t.length && `$.inArray(data[2], t) === -1) return false;
+                        var rowFilterNorm = normalizeFilterName(data[3]); var f = getOvChecked('overviewFilterFilterMenu'); if (f.length && `$.inArray(rowFilterNorm, f) === -1) return false;
+                        return true;
+                    };
+                    `$.fn.dataTable.ext.search.push(overviewSearchFn);
+                    var hideNotAssigned = `$('#overviewFilterHideNotAssigned');
+                    if (hideNotAssigned.length) hideNotAssigned.on('change', function(){ api.draw(); });
+                    var resetBtn = `$('#overviewFiltersReset');
+                    if (resetBtn.length) resetBtn.on('click', function(){
+                        `$('#overviewFilterCategoryMenu,#overviewFilterTargetMenu,#overviewFilterFilterMenu').find('input.filter-cb').prop('checked', false);
+                        updateOvBtn('overviewFilterCategoryBtn','overviewFilterCategoryMenu','Category'); updateOvBtn('overviewFilterTargetBtn','overviewFilterTargetMenu','Target'); updateOvBtn('overviewFilterFilterBtn','overviewFilterFilterMenu','Filter');
+                        hideNotAssigned.val('');
+                        api.draw();
+                    });
+                }
+            });
+            `$('#showAllAssignments').prop('checked', false);
+            `$('#showAllAssignments').on('change', function() {
+                var dt = `$('#allAssignmentsTable').DataTable();
+                var paginateControls = `$('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+                if (this.checked) { dt.page.len(-1); paginateControls.hide(); } else { dt.page.len(25); paginateControls.show(); }
+                dt.draw();
+            });
+        }
+        if (`$.fn.DataTable && `$('#filtersTable').length > 0) {
+            var filtersTable = initRKTable('#filtersTable', {
+                pageLength: 10, order: [[3, 'desc']],
+                columnDefs: [
+                    { targets: [0,1,2,3], className: 'text-start' },
+                    { targets: 0, width: '20%' }, { targets: 1, width: '40%' }, { targets: 2, width: '15%' },
+                    { targets: 3, width: '25%' }
+                ]
+            });
+            `$('#showAllFilters').prop('checked', false);
+            `$('#showAllFilters').on('change', function() {
+                var isShowAll = this.checked;
+                var paginateControls = `$('#filtersTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+                if (isShowAll) { filtersTable.page.len(-1); paginateControls.hide(); }
+                else { filtersTable.page.len(10); paginateControls.show(); }
+                filtersTable.draw();
+            });
+        }
+    });
+    </script>
+"@
+
+    $html = Get-RKSolutionsReportTemplate `
+        -TenantName $TenantName `
+        -ReportTitle 'Enrollment' `
+        -ReportSlug 'intune-enrollment-overview' `
+        -Eyebrow 'INTUNE ENROLLMENT FLOWS' `
+        -Lede 'Assignment overview across all Intune policy types with group and filter targeting.' `
+        -Tags @('Intune', 'Enrollment', 'Assignments') `
+        -StatsCardsHtml $statsCardsHtml `
+        -BodyContentHtml $bodyContentHtml
+
     $outDir = Split-Path -Parent $OutputPath
     if ($outDir -and -not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
     if (-not [System.IO.Path]::HasExtension($OutputPath)) { $OutputPath = $OutputPath + ".html" }
@@ -2063,8 +1897,8 @@ function Get-ArchitectureDiagramFragment {
         foreach ($gd in $DeviceGroupDetails) {
             $encName = [System.Net.WebUtility]::HtmlEncode($gd.DisplayName)
             $encType = [System.Net.WebUtility]::HtmlEncode($gd.GroupType)
-            $ruleCell = if ($gd.MembershipRule) { $gd.MembershipRule } else { "-" }
-            $groupTableRows += "<tr><td class=`"arch-group-cell`">$encName</td><td class=`"arch-group-type`">$encType</td><td class=`"arch-group-rule`">$ruleCell</td></tr>"
+            $ruleCell = if ($gd.MembershipRule -and $gd.MembershipRule -ne "-") { '<code>' + $gd.MembershipRule + '</code>' } else { "-" }
+            $groupTableRows += "<tr><td class=`"arch-group-cell`">$encName</td><td class=`"arch-group-type`">$encType</td><td class=`"arch-group-rule entra-rule`">$ruleCell</td></tr>"
         }
     }
     $autopilotName = if ($autopilotPolicies.Count -gt 0) { [System.Net.WebUtility]::HtmlEncode($autopilotPolicies[0]) } else { "- None -" }
@@ -2082,7 +1916,7 @@ function Get-ArchitectureDiagramFragment {
 "@ }
     [void]$sb.AppendLine('<div class="arch-flow">')
     [void]$sb.AppendLine(@"
-<div class="arch-step arch-step-device" style="--arch-fill:#0f766e;">
+<div class="arch-step arch-step-device" style="--arch-fill:#ea580c;">
 <div class="arch-step-title">Device</div>
 <div class="arch-group-table-wrap">
 <table class="arch-group-table">
@@ -2094,7 +1928,7 @@ function Get-ArchitectureDiagramFragment {
 "@)
     [void]$sb.AppendLine('<div class="arch-arrow" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>')
     [void]$sb.AppendLine(@"
-<div class="arch-step arch-step-memberof" style="--arch-fill:#115e59;">
+<div class="arch-step arch-step-memberof" style="--arch-fill:#c2410c;">
 <div class="arch-step-title">Entra ID Groups</div>
 <div class="arch-group-table-wrap">
 <table class="arch-group-table">
@@ -2116,14 +1950,14 @@ function Get-ArchitectureDiagramFragment {
         [void]$sb.AppendLine('<div class="arch-arrow" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>')
     }
     [void]$sb.AppendLine(@"
-<div class="arch-step arch-step-autopilot-esp" style="--arch-fill:#0f766e;">
+<div class="arch-step arch-step-autopilot-esp" style="--arch-fill:#ea580c;">
 <div class="arch-autopilot-esp-inner">
-<div class="arch-esp-block" style="--arch-fill:#0f766e;">
+<div class="arch-esp-block" style="--arch-fill:#ea580c;">
 <div class="arch-step-title">Autopilot Profile</div>
 <div class="arch-step-sub">$autopilotName</div>
 </div>
 <div class="arch-arrow-down" aria-hidden="true"><i class="fas fa-chevron-down"></i></div>
-<div class="arch-esp-block" style="--arch-fill:#115e59;">
+<div class="arch-esp-block" style="--arch-fill:#c2410c;">
 <div class="arch-step-title">Enrollment Status Page</div>
 <div class="arch-step-sub">$espName</div>
 </div>
@@ -2339,7 +2173,8 @@ function Get-AppliedFlowHtmlFragment {
             $gEnc = [System.Net.WebUtility]::HtmlEncode($gtr[0])
             $tEnc = [System.Net.WebUtility]::HtmlEncode($gtr[1])
             $rEnc = [System.Net.WebUtility]::HtmlEncode($gtr[2])
-            [void]$sb.AppendLine('<div class="policy-item policy-item-4col" style="grid-template-columns: 2fr 2fr 1fr 2fr;"><div class="policy-name">' + $pEnc + '</div><div class="policy-assignment">' + $gEnc + '</div><div class="policy-type">' + $tEnc + '</div><div class="policy-filter">' + $rEnc + '</div></div>')
+            $rDisplay = if ($rEnc -and $rEnc -ne '-' -and $rEnc -ne 'No Filter') { '<code>' + $rEnc + '</code>' } else { $rEnc }
+            [void]$sb.AppendLine('<div class="policy-item policy-item-4col" style="grid-template-columns: 2fr 2fr 1fr 2fr;"><div class="policy-name">' + $pEnc + '</div><div class="policy-assignment">' + $gEnc + '</div><div class="policy-type">' + $tEnc + '</div><div class="policy-filter entra-rule">' + $rDisplay + '</div></div>')
         }
         [void]$sb.AppendLine('</div>')
         $sb.ToString()
@@ -2516,11 +2351,12 @@ $espRestHtml
                 $gEnc = [System.Net.WebUtility]::HtmlEncode($gtr[0])
                 $tEnc = [System.Net.WebUtility]::HtmlEncode($gtr[1])
                 $rEnc = [System.Net.WebUtility]::HtmlEncode($gtr[2])
+                $rDisplay = if ($rEnc -and $rEnc -ne '-' -and $rEnc -ne 'No Filter') { '<code>' + $rEnc + '</code>' } else { $rEnc }
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-item policy-item-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;">'
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">' + $pEnc + '</span></div>'
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">' + $gEnc + '</span></div>'
                 $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">' + $tEnc + '</span></div>'
-                $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rEnc + '</span></div>'
+                $cloudPCProvisioningDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rDisplay + '</span></div>'
                 $cloudPCProvisioningDeviceGroupsHtml += '</div>'
             }
             $cloudPCProvisioningDeviceGroupsHtml = $cloudPCTableHeader + $cloudPCProvisioningDeviceGroupsHtml
@@ -2582,11 +2418,12 @@ $espRestHtml
                 $gEnc = [System.Net.WebUtility]::HtmlEncode($gtr[0])
                 $tEnc = [System.Net.WebUtility]::HtmlEncode($gtr[1])
                 $rEnc = [System.Net.WebUtility]::HtmlEncode($gtr[2])
+                $rDisplay = if ($rEnc -and $rEnc -ne '-' -and $rEnc -ne 'No Filter') { '<code>' + $rEnc + '</code>' } else { $rEnc }
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-item policy-item-devicegroups" style="grid-template-columns: 2fr 2fr 1fr 3fr;">'
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-name"><span class="flow-field-label">Policy name</span><br><span class="flow-field-value">' + $pEnc + '</span></div>'
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-assignment"><span class="flow-field-label">Group name</span><br><span class="flow-field-value">' + $gEnc + '</span></div>'
                 $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-type"><span class="flow-field-label">Type</span><br><span class="flow-field-value">' + $tEnc + '</span></div>'
-                $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rEnc + '</span></div>'
+                $cloudPCUserSettingsDeviceGroupsHtml += '<div class="policy-filter entra-rule"><span class="flow-field-label">Membership rule</span><br><span class="flow-field-value">' + $rDisplay + '</span></div>'
                 $cloudPCUserSettingsDeviceGroupsHtml += '</div>'
             }
             $cloudPCUserSettingsDeviceGroupsHtml = $cloudPCUserSettingsTableHeader + $cloudPCUserSettingsDeviceGroupsHtml
@@ -2632,7 +2469,7 @@ $userTable
         foreach ($gd in $DeviceGroupDetails) {
             $name = if ($gd.DisplayName) { $gd.DisplayName } else { "-" }
             $gType = if ($gd.GroupType) { $gd.GroupType } else { "Static" }
-            $ruleHtml = if ($gd.MembershipRule) { $gd.MembershipRule } else { "-" }
+            $ruleHtml = if ($gd.MembershipRule -and $gd.MembershipRule -ne "-") { '<code>' + $gd.MembershipRule + '</code>' } else { "-" }
             $encName = [System.Net.WebUtility]::HtmlEncode($name)
             $encType = [System.Net.WebUtility]::HtmlEncode($gType)
             $entraGroupListHtml += '<div class="policy-item policy-item-devicegroups" style="grid-template-columns: 2fr 1fr 3fr;">'
@@ -2732,224 +2569,279 @@ function New-DeviceVisualizationHtmlReport {
     )
     if (-not $AppliedFlowHtml) { $AppliedFlowHtml = Get-AppliedFlowHtmlFragment -EvaluatedAssignments $EvaluatedAssignments -DeviceName $DeviceName -DeviceGroupDetails $DeviceGroupDetails -DevicePlatform $DevicePlatform -IsCloudPC:$IsCloudPC -DeviceGroupIds $DeviceGroupIds -UserGroupIds $UserGroupIds }
     $architectureFragment = Get-ArchitectureDiagramFragment -EvaluatedAssignments $EvaluatedAssignments -DeviceName $DeviceName -DeviceGroupDetails $DeviceGroupDetails -IntuneDeviceId $IntuneDeviceId -EntraDeviceId $EntraDeviceId -DevicePlatform $DevicePlatform -IsCloudPC:$IsCloudPC -DeviceGroupIds $DeviceGroupIds -UserGroupIds $UserGroupIds
-    $overviewTabNav = ""
-    $overviewTabPane = ""
-    $diagramTabActive = "active"
-    $diagramPaneActive = "show active"
-    $architectureTabNav = ""
+
+    # Calculate stats
+    $applied = $EvaluatedAssignments | Where-Object { $_.AppliesToDevice -eq $true }
+    $appliedCount = if ($applied) { ($applied | Select-Object -Property PolicyName -Unique).Count } else { 0 }
+    $totalPolicies = if ($EvaluatedAssignments) { ($EvaluatedAssignments | Select-Object -Property PolicyName -Unique).Count } else { 0 }
+    $groupCount = if ($DeviceGroupDetails) { $DeviceGroupDetails.Count } else { 0 }
+    $excludedCount = $totalPolicies - $appliedCount
+
+    $statsCardsHtml = @"
+            <div class="rk-stat-tile t-rust">
+                <div class="rk-stat-eyebrow">APPLIED POLICIES</div>
+                <div class="rk-stat-number">$appliedCount</div>
+                <div class="rk-stat-caption">Policies targeting this device</div>
+            </div>
+            <div class="rk-stat-tile t-olive">
+                <div class="rk-stat-eyebrow">TOTAL POLICIES</div>
+                <div class="rk-stat-number">$totalPolicies</div>
+                <div class="rk-stat-caption">All evaluated policies</div>
+            </div>
+            <div class="rk-stat-tile t-steel">
+                <div class="rk-stat-eyebrow">GROUP MEMBERSHIPS</div>
+                <div class="rk-stat-number">$groupCount</div>
+                <div class="rk-stat-caption">Device group memberships</div>
+            </div>
+            <div class="rk-stat-tile t-rose">
+                <div class="rk-stat-eyebrow">NOT APPLIED</div>
+                <div class="rk-stat-number">$excludedCount</div>
+                <div class="rk-stat-caption">Excluded or not targeted</div>
+            </div>
+"@
+
+    # Build tab navigation for overview + diagram
+    $overviewTabHtml = ""
+    $overviewPanelHtml = ""
+    $diagramTabClass = "rk-tab active"
+    $diagramPanelClass = "rk-panel active"
     if ($AssignmentOverviewFragment) {
-        $overviewTabNav = "<li class=`"nav-item`"><button class=`"nav-link active`" id=`"overview-tab`" data-bs-toggle=`"tab`" data-bs-target=`"#overview`" type=`"button`" role=`"tab`"><i class=`"fas fa-chart-pie me-2`"></i>Assignment Overview</button></li>"
-        $overviewTabPane = "<div class=`"tab-pane fade show active`" id=`"overview`" role=`"tabpanel`">" + $AssignmentOverviewFragment + "</div>"
-        $diagramTabActive = ""
-        $diagramPaneActive = ""
+        $overviewTabHtml = '<button class="rk-tab active" data-target="panel-overview">Assignment Overview</button>'
+        $overviewPanelHtml = @"
+    <div id="panel-overview" class="rk-panel active">
+        <div class="rk-card">
+            <div class="rk-card-body">
+$AssignmentOverviewFragment
+            </div>
+        </div>
+    </div>
+"@
+        $diagramTabClass = "rk-tab"
+        $diagramPanelClass = "rk-panel"
     }
-    $reportDate = Get-Date -Format 'MMMM dd, yyyy HH:mm'
-    $titleDevice = [System.Net.WebUtility]::HtmlEncode($DeviceName)
-    $bannerDevice = [System.Net.WebUtility]::HtmlEncode($DeviceName)
-    $tenantDisplay = [System.Net.WebUtility]::HtmlEncode($TenantName) + " · " + $reportDate
-    $htmlTemplate = @'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Intune Device Visualization - __PH_TITLE_DEVICE__</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<style>
-:root{--primary-color:#0078d4;--bg-color:#e2e8f0;--card-bg:#eef2f7;--text-color:#1e293b;--text-secondary:#64748b;--border-color:#cbd5e1;--gradient-primary:linear-gradient(135deg,#0078d4 0%,#107c10 100%);}
-[data-theme="dark"]{--bg-color:#0d0d0d;--card-bg:#1a1a1a;--text-color:#e5e5e5;--text-secondary:#a3a3a3;--border-color:#404040;--bg-secondary:#1a1a1a;--bg-tertiary:#262626;}
-body{background:var(--bg-color);color:var(--text-color);min-height:100vh;}
-.app-container{max-width:1200px;margin:0 auto;padding:20px;}
-.main-tabs-nav{display:flex;width:100%;}
-.main-tabs-nav .nav-item{flex:1;text-align:center;}
-.main-tabs-nav .nav-link{width:100%;text-align:center;}
-.dashboard-header{background:linear-gradient(180deg,#1e293b 0%,#334155 100%);color:#fff;padding:2rem;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.08);border-bottom:3px solid #475569;}
-.overview-tiles-row .summary-card{min-height:100px;padding:0.75rem 1rem;display:flex;flex-direction:column;justify-content:center;align-items:center;}
-.overview-tiles-row .summary-card .card-icon{width:36px;height:36px;font-size:1rem;margin:0 auto 0.4rem;}
-.overview-tiles-row .summary-card .card-title{font-size:1.5rem;margin:0.2rem 0;}
-.overview-tiles-row .summary-card .card-text{min-height:2em;font-size:0.8rem;display:flex;align-items:center;justify-content:center;text-align:center;}
-.device-banner{background:var(--card-bg);border:1px solid var(--border-color,#e5e7eb);border-radius:8px;padding:1rem;margin-bottom:1rem;}
-.summary-card{background:var(--card-bg);border-radius:12px;padding:1.5rem;text-align:center;}
-.modern-table-container{margin:1rem 0;border-radius:12px;overflow:hidden;}
-.modern-table-header{background:linear-gradient(180deg,#1e293b 0%,#334155 100%);padding:1rem;color:#fff;}
-.modern-table-header h5,.modern-table-header small{color:#fff;}
-.modern-table-header small{opacity:0.88;font-size:0.875rem;}
-.nav-tabs .nav-link{font-weight:500;}
-.nav-tabs .nav-link.active{background:#334155;color:#fff;border-color:#334155;}
-[data-theme="dark"] .nav-tabs .nav-link{background:var(--bg-tertiary);color:var(--text-secondary);border-color:var(--border-color);}
-[data-theme="dark"] .nav-tabs .nav-link:hover{background:#333;color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .nav-tabs .nav-link.active{background:#333;color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .table,[data-theme="dark"] .modern-table{background:var(--card-bg);color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .table thead th,[data-theme="dark"] .modern-table thead th{background:var(--bg-tertiary);color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .table tbody td,[data-theme="dark"] .modern-table tbody td{background:var(--card-bg);color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .table tbody tr:hover td,[data-theme="dark"] .modern-table tbody tr:hover td{background:rgba(255,255,255,0.05);}
-[data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) td{background:var(--bg-tertiary);}
-[data-theme="dark"] .dataTables_wrapper{color:var(--text-color);background:var(--card-bg);border-color:var(--border-color);}
-[data-theme="dark"] .modern-table-container .table-responsive,[data-theme="dark"] .modern-table-body{background:var(--card-bg);}
-[data-theme="dark"] .dataTables_filter input,[data-theme="dark"] .dataTables_length select{background:var(--bg-tertiary);color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .dataTables_info{color:var(--text-secondary);}
-[data-theme="dark"] .dataTables_paginate .page-link{background:var(--card-bg);color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .dataTables_paginate .page-link:hover{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .dataTables_paginate .page-item.active .page-link{background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-color);}
-[data-theme="dark"] .dataTables_paginate .page-item.disabled .page-link{background:var(--card-bg);color:var(--text-secondary);}
-[data-theme="dark"] .dt-button{background:var(--bg-tertiary);color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .dt-button:hover{background:#333;color:var(--text-color);}
-[data-theme="dark"] .modern-table-container{background:var(--card-bg);border-color:var(--border-color);}
-[data-theme="dark"] .modern-table-header{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .device-banner{border-color:var(--border-color);}
-.alert-info{background-color:#e7f3ff;border-color:#b3d9ff;color:#004085;}
-.alert-info code{background-color:rgba(0,0,0,0.05);padding:2px 6px;border-radius:3px;font-family:'Cascadia Code','Source Code Pro',Menlo,Consolas,monospace;}
-.alert-info a{color:#004085;font-weight:600;}
-.alert-info a:hover{color:#002752;}
-[data-theme="dark"] .alert-info{background-color:#1a3a52;border-color:#2c6089;color:#a8d1ff;}
-[data-theme="dark"] .alert-info code{background-color:rgba(255,255,255,0.1);}
-[data-theme="dark"] .alert-info a{color:#a8d1ff;}
-[data-theme="dark"] .alert-info a:hover{color:#d4e9ff;}
-[data-theme="dark"] .dashboard-header{background:linear-gradient(180deg,#171717 0%,#262626 100%);border-bottom-color:var(--border-color);box-shadow:none;}
-.assignment-filters-modern{background:linear-gradient(180deg,var(--card-bg) 0%,#e8ecf1 100%);border-bottom:1px solid var(--border-color);padding:1rem 1.25rem;}
-.assignment-filters-modern .assignment-filters-inner{display:flex;flex-wrap:wrap;align-items:flex-end;gap:1rem;}
-.assignment-filters-modern .filter-group{display:flex;flex-direction:column;gap:0.25rem;}
-.assignment-filters-modern .filter-label{font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;color:var(--text-secondary,#64748b);margin:0;}
-.assignment-filters-modern .filter-select{min-width:140px;padding:0.5rem 0.75rem;border-radius:8px;border:1px solid var(--border-color);background:var(--card-bg);font-size:0.875rem;color:var(--text-color);transition:border-color 0.2s,box-shadow 0.2s;}
-.assignment-filters-modern .filter-select:focus{border-color:#475569;outline:none;box-shadow:0 0 0 3px rgba(71,85,105,0.2);}
-.assignment-filters-modern .filter-dropdown-btn{min-width:140px;text-align:left;}
-.assignment-filters-modern .filter-checkbox-dropdown{max-height:260px;overflow-y:auto;padding:0.25rem;}
-.assignment-filters-modern .filter-checkbox-dropdown .dropdown-item{white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:0.5rem;}
-.assignment-filters-modern .filter-checkbox-dropdown .dropdown-item input{margin:0;cursor:pointer;}
-.assignment-filters-modern .filter-checkbox-dropdown label{margin:0;cursor:pointer;width:100%;}
-.assignment-filters-modern .filter-reset-btn{display:inline-flex;align-items:center;gap:0.35rem;padding:0.5rem 0.9rem;border-radius:8px;border:1px solid var(--border-color);background:var(--card-bg);font-size:0.875rem;color:var(--text-secondary);cursor:pointer;transition:all 0.2s;height:2.15rem;}
-.assignment-filters-modern .filter-reset-btn:hover{background:#e2e8f0;border-color:#cbd5e1;color:#475569;}
-[data-theme="dark"] .assignment-filters-modern{background:linear-gradient(180deg,var(--bg-tertiary) 0%,var(--card-bg) 100%);border-color:var(--border-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-label{color:var(--text-secondary);}
-[data-theme="dark"] .assignment-filters-modern .filter-select{background:var(--card-bg);color:var(--text-color);border-color:var(--border-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-select:focus{border-color:#737373;box-shadow:0 0 0 3px rgba(115,115,115,0.2);}
-[data-theme="dark"] .assignment-filters-modern .filter-reset-btn{background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-secondary);}
-[data-theme="dark"] .assignment-filters-modern .filter-reset-btn:hover{background:#333;color:var(--text-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn{background:var(--card-bg);border-color:var(--border-color);color:var(--text-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:hover,[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:focus,[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn.show{background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown{background:var(--card-bg);border-color:var(--border-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item{color:var(--text-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item:hover{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown label{color:var(--text-color);}
-[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown input.filter-cb{accent-color:#a3a3a3;}
-[data-theme="dark"] .summary-card{background:var(--card-bg);border-color:var(--border-color);color:var(--text-color) !important;}
-[data-theme="dark"] .summary-card .card-title,[data-theme="dark"] .summary-card div.card-title{color:var(--text-color) !important;}
-[data-theme="dark"] .summary-card .text-muted,[data-theme="dark"] .summary-card p.text-muted{color:var(--text-secondary) !important;}
-[data-theme="dark"] .text-muted{color:var(--text-secondary);}
-[data-theme="dark"] .row .summary-card,.row .summary-card *{color:inherit;}
-[data-theme="dark"] .row .summary-card .card-title{color:var(--text-color) !important;}
-[data-theme="dark"] .row .summary-card .text-muted,.row .summary-card p{color:var(--text-secondary) !important;}
-html[data-theme="dark"] #viz .summary-card,html[data-theme="dark"] #viz .summary-card .card-title,html[data-theme="dark"] #viz .summary-card div,html[data-theme="dark"] #viz .summary-card p{color:var(--text-color) !important;}
-html[data-theme="dark"] #viz .summary-card p.text-muted,html[data-theme="dark"] #viz .summary-card .text-muted{color:var(--text-secondary) !important;}
-[data-theme="dark"] .overview-container{background:linear-gradient(135deg,var(--bg-color) 0%,var(--card-bg) 100%);border-color:var(--border-color);}
-[data-theme="dark"] .overview-header{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .overview-header h2{color:var(--text-color);}
-[data-theme="dark"] .overview-header p{color:var(--text-secondary);opacity:1;}
-.overview-container{background:linear-gradient(135deg,var(--card-bg) 0%,#e8ecf1 100%);border-radius:16px;padding:2rem;margin:1rem 0;}
-.overview-header{text-align:center;margin-bottom:2rem;background:linear-gradient(180deg,#1e293b 0%,#334155 100%);color:#fff;margin-left:-2rem;margin-right:-2rem;margin-top:-2rem;padding:2rem 2rem 1.5rem;border-radius:16px 16px 0 0;border-bottom:2px solid rgba(255,255,255,0.06);}
-.overview-header h2{font-size:1.75rem;font-weight:700;margin-bottom:0.5rem;color:#fff;letter-spacing:-0.02em;}
-.overview-header p{font-size:1rem;color:rgba(255,255,255,0.9);margin:0;}
-.summary-card .card-icon{width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 0.75rem;font-size:1.25rem;color:#fff;}
-.summary-card.border-primary .card-icon{background:linear-gradient(135deg,#0078d4,#106ebe);}
-.summary-card.border-success .card-icon{background:linear-gradient(135deg,#107c10,#0e6e0e);}
-.summary-card.border-warning .card-icon{background:linear-gradient(135deg,#ffc107,#e0a800);}
-.summary-card.border-danger .card-icon{background:linear-gradient(135deg,#d83b01,#c13401);}
-.device-theme-toggle{position:fixed;top:10px;right:10px;z-index:1050;display:flex;align-items:center;gap:6px;background:var(--card-bg);padding:6px 10px;border-radius:30px;box-shadow:0 4px 12px rgba(0,0,0,0.1);border:1px solid var(--border-color,#e5e7eb);}
-.device-theme-toggle .theme-icon{font-size:12px;color:var(--text-color);}
-.device-theme-switch{position:relative;display:inline-block;width:40px;height:20px;}
-.device-theme-switch input{opacity:0;width:0;height:0;}
-.device-theme-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#cbd5e1;transition:.4s;border-radius:20px;}
-.device-theme-slider:before{position:absolute;content:"";height:16px;width:16px;left:2px;bottom:2px;background:#fff;transition:.4s;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,0.2);}
-.device-theme-switch input:checked + .device-theme-slider{background:#334155;}
-.device-theme-switch input:checked + .device-theme-slider:before{transform:translateX(20px);}
-[data-theme="dark"] .device-theme-toggle{border-color:var(--border-color);}
+
+    $deviceEnc = [System.Net.WebUtility]::HtmlEncode($DeviceName)
+
+    # Build body content with tabs, architecture diagram, and flow
+    $bodyContentHtml = @"
+    <!-- Tab Navigation -->
+    <div class="rk-tabs">
+        $overviewTabHtml
+        <button class="$diagramTabClass" data-target="panel-diagram">Enrollment Flow</button>
+    </div>
+
+    $overviewPanelHtml
+
+    <div id="panel-diagram" class="$diagramPanelClass">
+        <div class="rk-card">
+            <div class="rk-card-header"><span>Architecture Overview</span></div>
+            <div class="rk-card-body">
+                <div class="arch-diagram-wrapper arch-diagram-html arch-flow-horizontal">$architectureFragment</div>
+            </div>
+        </div>
+
+        <div class="rk-card">
+            <div class="rk-card-header"><span>Enrollment Flow &mdash; $deviceEnc</span></div>
+            <div class="rk-card-body">
+                <div class="flow-diagram-wrapper">$AppliedFlowHtml</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    const isDarkTheme = () => document.documentElement.getAttribute('data-theme') === 'dark';
+    function initMermaidTheme() {
+        const isDark = isDarkTheme();
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: isDark ? 'dark' : 'base',
+            themeVariables: isDark ? {
+                primaryColor: '#ea580c', primaryTextColor: '#fff', primaryBorderColor: '#c2410c',
+                lineColor: '#94a3b8', secondaryColor: '#4a2e10', tertiaryColor: '#1a1a1a',
+                background: '#0d0d0d', mainBkg: '#1a1a1a', secondBkg: '#262626',
+                fontSize: '16px', fontFamily: 'Segoe UI, system-ui, sans-serif'
+            } : {
+                primaryColor: '#ea580c', primaryTextColor: '#fff', primaryBorderColor: '#c2410c',
+                lineColor: '#64748b', secondaryColor: '#ccfbf1', tertiaryColor: '#ffffff',
+                background: '#ffffff', mainBkg: '#f8fafc', secondBkg: '#e8ecf1',
+                fontSize: '16px', fontFamily: 'Segoe UI, system-ui, sans-serif'
+            },
+            flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis', padding: 20 },
+            securityLevel: 'loose'
+        });
+    }
+    initMermaidTheme();
+    window.mermaid = mermaid;
+    </script>
+    <script>
+    `$(document).ready(function() {
+        if (`$.fn.DataTable && `$('#allAssignmentsTable').length > 0) {
+            var `$allTbl = `$('#allAssignmentsTable');
+            var preCategories = [], preTargets = [], preFilters = [];
+            function normFilter(s) { return String(s||'').replace(/\s*\((?:Include|Exclude)$$/i, '').trim() || String(s||''); }
+            `$allTbl.find('tbody tr').each(function() {
+                var `$row = `$(this);
+                var `$cells = `$row.find('td');
+                if (`$cells.length >= 4) {
+                    var c = `$.trim(`$cells.eq(1).text()); if (c && preCategories.indexOf(c) === -1) preCategories.push(c);
+                    var t = `$.trim(`$cells.eq(2).text()); if (t && preTargets.indexOf(t) === -1) preTargets.push(t);
+                    var f = normFilter(`$.trim(`$cells.eq(3).text())); if (f && preFilters.indexOf(f) === -1) preFilters.push(f);
+                }
+            });
+            preCategories.sort(); preTargets.sort(); preFilters.sort();
+            var at = initRKTable('#allAssignmentsTable', {
+                pageLength: 25, order: [[1,'asc'],[0,'asc']],
+                initComplete: function() {
+                    var api = this.api();
+                    function escOv(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+                    function getOvChecked(menuId){ return `$('#'+menuId+' input.filter-cb:checked').map(function(){ return `$(this).attr('data-value'); }).get(); }
+                    function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; `$('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
+                    function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$$/i, '').trim() || s; }
+                    function fillOvDropdownFromArray(menuId, btnId, values, label) {
+                        var menu = `$('#'+menuId); if (!menu.length) return; menu.empty();
+                        `$.each(values, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
+                        menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
+                        menu.on('click', function(e){ e.stopPropagation(); });
+                        updateOvBtn(btnId, menuId, label);
+                    }
+                    fillOvDropdownFromArray('overviewFilterCategoryMenu','overviewFilterCategoryBtn', preCategories, 'Category');
+                    fillOvDropdownFromArray('overviewFilterTargetMenu','overviewFilterTargetBtn', preTargets, 'Target');
+                    fillOvDropdownFromArray('overviewFilterFilterMenu','overviewFilterFilterBtn', preFilters, 'Filter');
+                    var overviewSearchFn = function(settings, data, dataIndex) {
+                        if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
+                        if (`$('#overviewFilterHideNotAssigned').length && `$('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
+                        var searchStr = ''; try { var searchApi = new `$.fn.dataTable.Api(settings); searchStr = (searchApi.search() || '').trim(); } catch (e) {}
+                        if (searchStr) { var found = false; for (var i = 0; i < data.length; i++) { if (data[i] && data[i].toString().toLowerCase().indexOf(searchStr.toLowerCase()) !== -1) { found = true; break; } } if (!found) return false; }
+                        var c = getOvChecked('overviewFilterCategoryMenu'); if (c.length && `$.inArray(data[1], c) === -1) return false;
+                        var t = getOvChecked('overviewFilterTargetMenu'); if (t.length && `$.inArray(data[2], t) === -1) return false;
+                        var rowFilterNorm = normalizeFilterName(data[3]); var f = getOvChecked('overviewFilterFilterMenu'); if (f.length && `$.inArray(rowFilterNorm, f) === -1) return false;
+                        return true;
+                    };
+                    `$.fn.dataTable.ext.search.push(overviewSearchFn);
+                    var hideNotAssigned = `$('#overviewFilterHideNotAssigned');
+                    if (hideNotAssigned.length) hideNotAssigned.on('change', function(){ api.draw(); });
+                    var resetBtn = `$('#overviewFiltersReset');
+                    if (resetBtn.length) resetBtn.on('click', function(){
+                        `$('#overviewFilterCategoryMenu,#overviewFilterTargetMenu,#overviewFilterFilterMenu').find('input.filter-cb').prop('checked', false);
+                        updateOvBtn('overviewFilterCategoryBtn','overviewFilterCategoryMenu','Category'); updateOvBtn('overviewFilterTargetBtn','overviewFilterTargetMenu','Target'); updateOvBtn('overviewFilterFilterBtn','overviewFilterFilterMenu','Filter');
+                        hideNotAssigned.val('');
+                        api.draw();
+                    });
+                }
+            });
+            `$('#showAllAssignments').prop('checked', false);
+            `$('#showAllAssignments').on('change', function() {
+                var dt = `$('#allAssignmentsTable').DataTable();
+                var paginateControls = `$('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+                if (this.checked) { dt.page.len(-1); paginateControls.hide(); } else { dt.page.len(25); paginateControls.show(); }
+                dt.draw();
+            });
+        }
+        if (`$.fn.DataTable && `$('#filtersTable').length > 0) {
+            var ft = initRKTable('#filtersTable', {
+                pageLength: 10, order: [[3,'desc']]
+            });
+            `$('#showAllFilters').prop('checked', false);
+            `$('#showAllFilters').on('change', function() {
+                var paginateControls = `$('#filtersTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
+                if (this.checked) { ft.page.len(-1); paginateControls.hide(); } else { ft.page.len(10); paginateControls.show(); }
+                ft.draw();
+            });
+        }
+    });
+    </script>
+"@
+
+    # Custom CSS for architecture diagram and flow visualization (preserved from original)
+    $customCss = @"
+/* --- Flow & Architecture Diagram CSS --- */
 .flow-diagram{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:1rem;padding:1.5rem;font-size:1rem;line-height:1.5;width:100%;max-width:100%;}
 .flow-container{width:100%;max-width:100%;}
 .flow-node{flex-shrink:0;}
-.flow-device{background:linear-gradient(180deg,#0f766e 0%,#115e59 100%);color:#fff;padding:1rem 1.5rem;border-radius:12px;min-width:160px;max-width:100%;align-self:center;text-align:left;}
-.flow-arrow{color:#0d9488;font-size:1.5rem;flex-shrink:0;align-self:center;display:flex;justify-content:center;}
+.flow-device{background:linear-gradient(135deg,var(--accent),#c2410c);color:#fff;padding:1rem 1.5rem;border-radius:12px;min-width:160px;max-width:100%;align-self:center;text-align:left;}
+.flow-arrow{color:var(--accent);font-size:1.5rem;flex-shrink:0;align-self:center;display:flex;justify-content:center;}
 .flow-device-label{display:block;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;opacity:0.9;margin-bottom:0.35rem;}
 .flow-device-name{display:block;font-weight:600;font-size:1.1rem;word-break:break-word;}
-.flow-step{background:var(--card-bg);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;margin-bottom:1rem;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);}
-.flow-step .step-header{display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;font-weight:600;font-size:1rem;color:#fff;background:linear-gradient(180deg,#0f766e 0%,#115e59 100%);}
+.flow-step{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;margin-bottom:1rem;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);}
+.flow-step .step-header{display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;font-weight:600;font-size:1rem;color:#fff;background:linear-gradient(135deg,var(--accent),#c2410c);}
 .flow-step .step-content{padding:1rem;}
 .flow-step .step-toggle{display:inline-flex;align-items:center;gap:0.4rem;margin-bottom:0.75rem;}
 .flow-step .step-toggle i{transition:transform 0.2s ease;}
 .flow-step .step-toggle[aria-expanded="true"] i{transform:rotate(180deg);}
-.step-name{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-color);}
-.policy-category{background:var(--card-bg);border:1px solid var(--border-color,#e5e7eb);border-radius:8px;padding:1rem;margin-bottom:0.75rem;}
-.policy-category h5{color:var(--text-color);margin-bottom:0.6rem;font-size:0.9rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
-.policy-count{background:#0f766e;color:#fff;padding:4px 10px;border-radius:20px;font-size:0.7rem;font-weight:600;}
-.policy-table-header{display:grid;gap:0.75rem;padding:0.75rem 1rem;background:var(--bg-color);border:1px solid var(--border-color,#e5e7eb);border-radius:8px;margin-bottom:0.5rem;font-size:0.7rem;font-weight:700;color:var(--text-color);text-transform:uppercase;letter-spacing:0.5px;}
-.policy-item{display:grid;gap:0.75rem;padding:0.6rem 1rem;background:var(--card-bg);border:1px solid var(--border-color,#e5e7eb);border-radius:6px;margin-bottom:0.5rem;font-size:0.8rem;}
+.step-name{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-body);}
+.policy-category{background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:0.75rem;}
+.policy-category h5{color:var(--text-body);margin-bottom:0.6rem;font-size:0.9rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
+.policy-count{background:var(--accent);color:#fff;padding:4px 10px;border-radius:20px;font-size:0.7rem;font-weight:600;}
+.policy-table-header{display:grid;gap:0.75rem;padding:0.75rem 1rem;background:var(--bg-base);border:1px solid var(--border);border-radius:8px;margin-bottom:0.5rem;font-size:0.7rem;font-weight:700;color:var(--text-body);text-transform:uppercase;letter-spacing:0.5px;}
+.policy-item{display:grid;gap:0.75rem;padding:0.6rem 1rem;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;margin-bottom:0.5rem;font-size:0.8rem;}
 .policy-item:hover{background:rgba(0,0,0,0.02);}
 .policy-item-stacked{display:flex;flex-direction:column;gap:0.75rem;grid-template-columns:none !important;}
 .policy-item-stacked .flow-field{margin-bottom:0.25rem;}
 .policy-item-stacked .flow-field:last-child{margin-bottom:0;}
-.flow-field-label{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary,#6c757d);margin-bottom:0.2rem;}
-.flow-field-value{font-size:0.9rem;color:var(--text-color);word-wrap:break-word;overflow-wrap:break-word;}
+.flow-field-label{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:0.2rem;}
+.flow-field-value{font-size:0.9rem;color:var(--text-body);word-wrap:break-word;overflow-wrap:break-word;}
 .flow-field-value.entra-rule{font-family:ui-monospace,'Cascadia Code','Source Code Pro',Menlo,Consolas,monospace;font-size:0.75rem;word-break:break-all;background:rgba(0,0,0,0.06);padding:0.4rem 0.5rem;border-radius:4px;line-height:1.4;}
 .flow-field-value.entra-rule code{background:rgba(0,0,0,0.1);padding:0.15rem 0.4rem;border-radius:3px;font-size:0.7rem;}
-.policy-name{font-weight:600;color:var(--text-color);word-wrap:break-word;overflow-wrap:break-word;}
-.policy-assignment{font-weight:500;color:#0f766e;line-height:1.4;}
-.policy-filter{font-size:0.8rem;color:var(--text-secondary,#6c757d);line-height:1.4;word-wrap:break-word;}
+.policy-name{font-weight:600;color:var(--text-body);word-wrap:break-word;overflow-wrap:break-word;}
+.policy-assignment{font-weight:500;color:var(--accent);line-height:1.4;}
+.policy-filter{font-size:0.8rem;color:var(--text-muted);line-height:1.4;word-wrap:break-word;}
 .entra-group-row .entra-rule{font-family:ui-monospace,monospace;font-size:0.75rem;word-break:break-all;}
 .entra-group-row .entra-rule code{background:rgba(0,0,0,0.06);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;}
 [data-theme="dark"] .entra-group-row .entra-rule code{background:rgba(255,255,255,0.1);}
 .autopilot-config-section,.esp-config-section{margin-top:0.75rem;}
-.config-toggle{font-size:0.8rem;border-color:var(--border-color,#e5e7eb);color:var(--text-color);}
-.config-toggle:hover{background:#0f766e;border-color:#0f766e;color:#fff;}
+.config-toggle{font-size:0.8rem;border-color:var(--border);color:var(--text-body);}
+.config-toggle:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
 .config-toggle i{transition:transform 0.2s ease;}
 .config-toggle[aria-expanded="true"] i{transform:rotate(180deg);}
-.config-toggle[aria-expanded="true"]{background:#0f766e;border-color:#0f766e;color:#fff;}
-.flow-step .step-toggle.btn-outline-primary,.flow-step .btn-outline-primary.step-toggle{border-color:#0f766e;color:#0f766e;}
-.flow-step .step-toggle.btn-outline-primary:hover,.flow-step .btn-outline-primary.step-toggle:hover{background:#0f766e;border-color:#0f766e;color:#fff;}
-.autopilot-settings{background:rgba(0,0,0,0.03);border:1px solid var(--border-color,#e5e7eb);border-radius:6px;padding:0.75rem 1rem;margin-top:0.5rem;font-size:0.85rem;}
-.autopilot-settings dt{font-weight:600;color:var(--text-color);margin:0.4rem 0 0.1rem 0;}
-.autopilot-settings dd{margin:0 0 0.25rem 0;color:var(--text-secondary,#6c757d);}
+.config-toggle[aria-expanded="true"]{background:var(--accent);border-color:var(--accent);color:#fff;}
+.flow-step .step-toggle.btn-outline-primary,.flow-step .btn-outline-primary.step-toggle{border-color:var(--accent);color:var(--accent);}
+.flow-step .step-toggle.btn-outline-primary:hover,.flow-step .btn-outline-primary.step-toggle:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
+.autopilot-settings{background:rgba(0,0,0,0.03);border:1px solid var(--border);border-radius:6px;padding:0.75rem 1rem;margin-top:0.5rem;font-size:0.85rem;}
+.autopilot-settings dt{font-weight:600;color:var(--text-body);margin:0.4rem 0 0.1rem 0;}
+.autopilot-settings dd{margin:0 0 0.25rem 0;color:var(--text-muted);}
 .autopilot-settings dd:last-child{margin-bottom:0;}
 .esp-app-list{margin:0.25rem 0 0 0;padding-left:1.25rem;}
 .esp-app-list li{margin-bottom:0.15rem;}
-.flow-step-twocol .flow-col-header{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-color);}
-.flow-step-twocol .flow-col-device,.flow-step-twocol .flow-col-user{background:rgba(0,0,0,0.02);border-radius:8px;padding:1rem;border:1px solid var(--border-color,#e5e7eb);}
-[data-theme="dark"] .flow-step-twocol .flow-col-device,[data-theme="dark"] .flow-step-twocol .flow-col-user{background:rgba(255,255,255,0.04);border-color:var(--border-color);}
-[data-theme="dark"] .flow-step{background:var(--card-bg);border-color:var(--border-color);}
-[data-theme="dark"] .flow-step .step-header{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .flow-device{background:var(--bg-tertiary);color:var(--text-color);}
-[data-theme="dark"] .flow-arrow{color:var(--text-secondary);}
-[data-theme="dark"] .flow-step-twocol .flow-col-header{color:var(--text-color);}
-[data-theme="dark"] .step-name{color:var(--text-color);}
-[data-theme="dark"] .policy-category{background:var(--card-bg);border-color:var(--border-color);}
-[data-theme="dark"] .policy-category h5{color:var(--text-color);}
-[data-theme="dark"] .policy-table-header{background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-color);}
-[data-theme="dark"] .policy-item{background:var(--bg-tertiary);border-color:var(--border-color);}
+.flow-step-twocol .flow-col-header{font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;color:var(--text-body);}
+.flow-step-twocol .flow-col-device,.flow-step-twocol .flow-col-user{background:rgba(0,0,0,0.02);border-radius:8px;padding:1rem;border:1px solid var(--border);}
+[data-theme="dark"] .flow-step-twocol .flow-col-device,[data-theme="dark"] .flow-step-twocol .flow-col-user{background:rgba(255,255,255,0.04);border-color:var(--border);}
+[data-theme="dark"] .flow-step{background:var(--bg-elevated);border-color:var(--border);}
+[data-theme="dark"] .flow-step .step-header{background:var(--bg-warm);color:var(--text-body);}
+[data-theme="dark"] .flow-device{background:var(--bg-warm);color:var(--text-body);}
+[data-theme="dark"] .flow-arrow{color:var(--text-muted);}
+[data-theme="dark"] .flow-step-twocol .flow-col-header{color:var(--text-body);}
+[data-theme="dark"] .step-name{color:var(--text-body);}
+[data-theme="dark"] .policy-category{background:var(--bg-elevated);border-color:var(--border);}
+[data-theme="dark"] .policy-category h5{color:var(--text-body);}
+[data-theme="dark"] .policy-table-header{background:var(--bg-warm);border-color:var(--border);color:var(--text-body);}
+[data-theme="dark"] .policy-item{background:var(--bg-warm);border-color:var(--border);}
 [data-theme="dark"] .policy-item:hover{background:rgba(255,255,255,0.05);}
-[data-theme="dark"] .policy-name{color:var(--text-color);}
+[data-theme="dark"] .policy-name{color:var(--text-body);}
 [data-theme="dark"] .policy-assignment{color:#a3a3a3;}
-[data-theme="dark"] .policy-filter{color:var(--text-secondary);}
-[data-theme="dark"] .flow-field-label{color:var(--text-secondary);}
-[data-theme="dark"] .flow-field-value{color:var(--text-color);}
+[data-theme="dark"] .policy-filter{color:var(--text-muted);}
+[data-theme="dark"] .flow-field-label{color:var(--text-muted);}
+[data-theme="dark"] .flow-field-value{color:var(--text-body);}
 [data-theme="dark"] .flow-field-value.entra-rule{background:rgba(255,255,255,0.05);}
 [data-theme="dark"] .flow-field-value.entra-rule code{background:rgba(255,255,255,0.1);}
-[data-theme="dark"] .policy-empty .policy-empty-msg,[data-theme="dark"] .policy-empty-msg.text-muted{color:var(--text-secondary) !important;}
-[data-theme="dark"] .autopilot-settings{background:rgba(0,0,0,0.2);border-color:var(--border-color);}
-[data-theme="dark"] .autopilot-settings dt{color:var(--text-color);}
-[data-theme="dark"] .autopilot-settings dd{color:var(--text-secondary);}
+[data-theme="dark"] .policy-empty .policy-empty-msg,[data-theme="dark"] .policy-empty-msg.text-muted{color:var(--text-muted) !important;}
+[data-theme="dark"] .autopilot-settings{background:rgba(0,0,0,0.2);border-color:var(--border);}
+[data-theme="dark"] .autopilot-settings dt{color:var(--text-body);}
+[data-theme="dark"] .autopilot-settings dd{color:var(--text-muted);}
 .flow-diagram-wrapper{overflow-y:auto;overflow-x:auto;padding:0.5rem 0;}
 @media (max-width:576px){.flow-step-twocol .row{flex-direction:column;}}
-.arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-color) 0%,#cbd5e1 100%);border:1px solid var(--border-color);border-radius:16px;padding:2rem;margin:1rem 0;overflow:auto;min-height:520px;}
+.arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-base) 0%,#cbd5e1 100%);border:1px solid var(--border);border-radius:16px;padding:2rem;margin:1rem 0;overflow:auto;min-height:520px;}
 .arch-flow-horizontal .arch-diagram-wrapper{min-height:auto;padding:1rem 1rem;}
 .arch-diagram-svg{width:100%;height:auto;display:block;}
 .arch-diagram-svg .arch-box{filter:drop-shadow(0 2px 6px rgba(0,0,0,0.15));}
 .arch-diagram-svg .arch-box:hover{filter:drop-shadow(0 4px 12px rgba(0,0,0,0.2));}
-[data-theme="dark"] .arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-color) 0%,var(--card-bg) 100%);border-color:var(--border-color);}
+[data-theme="dark"] .arch-diagram-wrapper{background:linear-gradient(180deg,var(--bg-base) 0%,var(--bg-elevated) 100%);border-color:var(--border);}
 [data-theme="dark"] .arch-diagram-svg .arch-box{filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4));}
-#architecture h4,#architecture h4 i{color:var(--text-color) !important;}
-#architecture .text-muted,#architecture p.text-muted{color:var(--text-secondary) !important;}
-[data-theme="dark"] #diagram .p-4 > p.text-muted{color:var(--text-color) !important;}
-#architecture .p-4{color:var(--text-color);}
+#architecture h4,#architecture h4 i{color:var(--text-body) !important;}
+#architecture .text-muted,#architecture p.text-muted{color:var(--text-muted) !important;}
+[data-theme="dark"] #diagram .p-4 > p.text-muted{color:var(--text-body) !important;}
+#architecture .p-4{color:var(--text-body);}
 .arch-diagram-html .arch-flow{display:flex;flex-direction:column;align-items:center;gap:0;max-width:860px;margin:0 auto;}
 .arch-flow-horizontal .arch-flow{flex-direction:row;align-items:flex-start;flex-wrap:nowrap;gap:0;max-width:100%;margin:0;padding:0.5rem 0;overflow-x:auto;overflow-y:visible;justify-content:flex-start;}
 .arch-flow-horizontal .arch-step{flex:0 0 auto;min-width:90px;max-width:140px;padding:0.5rem 0.35rem;}
@@ -2983,7 +2875,7 @@ html[data-theme="dark"] #viz .summary-card p.text-muted,html[data-theme="dark"] 
 .arch-diagram-html .arch-step{background:var(--arch-fill);color:#fff;border-radius:12px;padding:1rem 1.5rem;min-width:280px;max-width:100%;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.3);}
 .arch-diagram-html .arch-step-title{font-weight:600;font-size:1rem;}
 .arch-diagram-html .arch-step-sub{font-size:0.875rem;opacity:0.95;margin-top:0.25rem;word-break:break-word;}
-.arch-diagram-html .arch-arrow{color:var(--text-secondary,#64748b);font-size:1.25rem;padding:0.35rem 0;}
+.arch-diagram-html .arch-arrow{color:var(--text-muted);font-size:1.25rem;padding:0.35rem 0;}
 .arch-diagram-html .arch-step-device,.arch-diagram-html .arch-step-memberof{text-align:left;min-width:100%;width:100%;max-width:860px;}
 .arch-diagram-html .arch-step-device .arch-step-title,.arch-diagram-html .arch-step-memberof .arch-step-title{text-align:center;}
 .arch-diagram-html .arch-step-device .arch-group-table-wrap,.arch-diagram-html .arch-step-memberof .arch-group-table-wrap{margin-left:0;margin-right:0;width:100%;min-width:100%;}
@@ -3037,200 +2929,69 @@ html[data-theme="dark"] #viz .summary-card p.text-muted,html[data-theme="dark"] 
 .arch-flow-horizontal .arch-diagram-html .arch-inner-title{font-size:0.8rem;}
 .arch-flow-horizontal .arch-diagram-html .arch-inner-sub{font-size:0.75rem;margin-top:0;}
 .arch-flow-horizontal .arch-diagram-html .arch-step-enrollment .arch-step-title{padding:0.5rem 0.6rem;}
-[data-theme="dark"] .arch-diagram-html .arch-arrow{color:var(--text-secondary);}
+[data-theme="dark"] .arch-diagram-html .arch-arrow{color:var(--text-muted);}
 [data-theme="dark"] .arch-flow-horizontal .arch-diagram-html .arch-step-memberof .arch-group-table td:nth-child(3){background:rgba(255,255,255,0.05);}
-</style>
-</head>
-<body>
-<div class="device-theme-toggle" title="Toggle dark/light mode (follows system when auto)">
-<div class="theme-icon"><i class="fas fa-sun"></i></div>
-<label class="device-theme-switch">
-<input type="checkbox" id="deviceThemeToggle" aria-label="Dark mode">
-<span class="device-theme-slider"></span>
-</label>
-<div class="theme-icon"><i class="fas fa-moon"></i></div>
-</div>
-<div class="app-container">
-<div class="dashboard-header"><h1><i class="fas fa-laptop me-2"></i>Intune Device Visualization</h1><p class="mb-0">__PH_TENANT_DATE__</p></div>
-<div class="device-banner"><strong>Device:</strong> __PH_DEVICE_BANNER__</div>
-<ul class="nav nav-tabs main-tabs-nav" id="mainTabs" role="tablist">
-__PH_OVERVIEW_NAV__
-<li class="nav-item"><button class="nav-link __PH_DIAGRAM_TAB_ACTIVE__" id="diagram-tab" data-bs-toggle="tab" data-bs-target="#diagram" type="button" role="tab">Enrollment flow</button></li>
-__PH_ARCHITECTURE_NAV__
-</ul>
-<div class="tab-content" id="mainTabContent">
-__PH_OVERVIEW_PANE__
-<div class="tab-pane fade __PH_DIAGRAM_PANE_ACTIVE__" id="diagram" role="tabpanel">
-<div class="p-4 w-100">
-<h4 class="mb-3"><i class="fas fa-drafting-compass me-2"></i>Architecture overview</h4>
-<p class="text-muted mb-4">High-level view of identity, management, policies, and assignments for this device.</p>
-<h5 class="mb-3">Autopilot Enrollment</h5>
-<div class="arch-diagram-wrapper arch-diagram-html arch-flow-horizontal">__PH_ARCHITECTURE__</div>
-<h4 class="mt-5 mb-3"><i class="fas fa-project-diagram me-2"></i>Enrollment flow</h4>
-<p class="text-muted mb-4">Policies and assignments applied to this device at each stage.</p>
-<div class="flow-diagram-wrapper">__PH_APPLIED_FLOW__</div>
-</div>
-</div>
-</div>
-</div>
-<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script type="module">
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-const isDarkTheme = () => document.documentElement.getAttribute('data-theme') === 'dark';
-function initMermaid() {
-  const isDark = isDarkTheme();
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: isDark ? 'dark' : 'base',
-    themeVariables: isDark ? {
-      primaryColor: '#0d9488',
-      primaryTextColor: '#fff',
-      primaryBorderColor: '#14b8a6',
-      lineColor: '#94a3b8',
-      secondaryColor: '#134e4a',
-      tertiaryColor: '#1a1a1a',
-      background: '#0d0d0d',
-      mainBkg: '#1a1a1a',
-      secondBkg: '#262626',
-      fontSize: '16px',
-      fontFamily: 'Segoe UI, system-ui, sans-serif'
-    } : {
-      primaryColor: '#0f766e',
-      primaryTextColor: '#fff',
-      primaryBorderColor: '#115e59',
-      lineColor: '#64748b',
-      secondaryColor: '#ccfbf1',
-      tertiaryColor: '#ffffff',
-      background: '#ffffff',
-      mainBkg: '#f8fafc',
-      secondBkg: '#e8ecf1',
-      fontSize: '16px',
-      fontFamily: 'Segoe UI, system-ui, sans-serif'
-    },
-    flowchart: {
-      useMaxWidth: true,
-      htmlLabels: true,
-      curve: 'basis',
-      padding: 20
-    },
-    securityLevel: 'loose'
-  });
-}
-initMermaid();
-window.mermaid = mermaid;
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  var themeToggle = document.getElementById('deviceThemeToggle');
-  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
-  function applyTheme(isDark) {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    if (themeToggle) themeToggle.checked = isDark;
-  }
-  var saved = localStorage.getItem('theme');
-  if (saved === 'dark' || saved === 'light') {
-    applyTheme(saved === 'dark');
-  } else {
-    applyTheme(prefersDark.matches);
-  }
-  if (themeToggle) themeToggle.addEventListener('change', function() {
-    var isDark = this.checked;
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-  });
-  prefersDark.addEventListener('change', function(e) {
-    if (localStorage.getItem('theme') === null) {
-      applyTheme(e.matches);
-    }
-  });
-  if (jQuery && jQuery.fn.DataTable && jQuery('#allAssignmentsTable').length > 0) {
-    var $allTbl = jQuery('#allAssignmentsTable');
-    var preCategories = [], preTargets = [], preFilters = [];
-    function normFilter(s) { return String(s||'').replace(/\s*\((?:Include|Exclude)$/i, '').trim() || String(s||''); }
-    $allTbl.find('tbody tr').each(function() {
-      var $row = jQuery(this);
-      var $cells = $row.find('td');
-      if ($cells.length >= 4) {
-        var c = jQuery.trim($cells.eq(1).text()); if (c && preCategories.indexOf(c) === -1) preCategories.push(c);
-        var t = jQuery.trim($cells.eq(2).text()); if (t && preTargets.indexOf(t) === -1) preTargets.push(t);
-        var f = normFilter(jQuery.trim($cells.eq(3).text())); if (f && preFilters.indexOf(f) === -1) preFilters.push(f);
-      }
-    });
-    preCategories.sort(); preTargets.sort(); preFilters.sort();
-    var at = $allTbl.DataTable({
-      responsive: true, pageLength: 25, order: [[1,'asc'],[0,'asc']], dom: 'Bfrtip', buttons: ['copy','csv','excel','pdf','print'],
-      initComplete: function() {
-        var api = this.api();
-        function escOv(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-        function getOvChecked(menuId){ return jQuery('#'+menuId+' input.filter-cb:checked').map(function(){ return jQuery(this).attr('data-value'); }).get(); }
-        function updateOvBtn(btnId, menuId, label){ var n = getOvChecked(menuId).length; jQuery('#'+btnId).text(n ? label + ' (' + n + ')' : 'Select...'); }
-        function normalizeFilterName(v) { var s = String(v||''); return s.replace(/\s*\((?:Include|Exclude)\)$/i, '').trim() || s; }
-        function fillOvDropdownFromArray(menuId, btnId, values, label) {
-          var menu = jQuery('#'+menuId); if (!menu.length) return; menu.empty();
-          jQuery.each(values, function(i,v){ menu.append('<label class="dropdown-item"><input type="checkbox" class="filter-cb" data-value="'+escOv(v)+'"> '+escOv(v)+'</label>'); });
-          menu.find('input.filter-cb').on('change', function(e){ e.stopPropagation(); updateOvBtn(btnId, menuId, label); api.draw(); });
-          menu.on('click', function(e){ e.stopPropagation(); });
-          updateOvBtn(btnId, menuId, label);
-        }
-        fillOvDropdownFromArray('overviewFilterCategoryMenu','overviewFilterCategoryBtn', preCategories, 'Category');
-        fillOvDropdownFromArray('overviewFilterTargetMenu','overviewFilterTargetBtn', preTargets, 'Target');
-        fillOvDropdownFromArray('overviewFilterFilterMenu','overviewFilterFilterBtn', preFilters, 'Filter');
-        var overviewSearchFn = function(settings, data, dataIndex) {
-          if (settings.nTable && settings.nTable.id !== 'allAssignmentsTable') return true;
-          if (jQuery('#overviewFilterHideNotAssigned').length && jQuery('#overviewFilterHideNotAssigned').val() === 'hide' && data[2] === 'Not Assigned') return false;
-          var searchStr = ''; try { var searchApi = new jQuery.fn.dataTable.Api(settings); searchStr = (searchApi.search() || '').trim(); } catch (e) {}
-          if (searchStr) { var found = false; for (var i = 0; i < data.length; i++) { if (data[i] && data[i].toString().toLowerCase().indexOf(searchStr.toLowerCase()) !== -1) { found = true; break; } } if (!found) return false; }
-          var c = getOvChecked('overviewFilterCategoryMenu'); if (c.length && jQuery.inArray(data[1], c) === -1) return false;
-          var t = getOvChecked('overviewFilterTargetMenu'); if (t.length && jQuery.inArray(data[2], t) === -1) return false;
-          var rowFilterNorm = normalizeFilterName(data[3]); var f = getOvChecked('overviewFilterFilterMenu'); if (f.length && jQuery.inArray(rowFilterNorm, f) === -1) return false;
-          return true;
-        };
-        jQuery.fn.dataTable.ext.search.push(overviewSearchFn);
-        var hideNotAssigned = jQuery('#overviewFilterHideNotAssigned');
-        if (hideNotAssigned.length) hideNotAssigned.on('change', function(){ api.draw(); });
-        var resetBtn = jQuery('#overviewFiltersReset');
-        if (resetBtn.length) resetBtn.on('click', function(){
-          jQuery('#overviewFilterCategoryMenu,#overviewFilterTargetMenu,#overviewFilterFilterMenu').find('input.filter-cb').prop('checked', false);
-          updateOvBtn('overviewFilterCategoryBtn','overviewFilterCategoryMenu','Category'); updateOvBtn('overviewFilterTargetBtn','overviewFilterTargetMenu','Target'); updateOvBtn('overviewFilterFilterBtn','overviewFilterFilterMenu','Filter');
-          hideNotAssigned.val('');
-          api.draw();
-        });
-      }
-    });
-    jQuery('#showAllAssignments').prop('checked', false);
-    jQuery('#showAllAssignments').on('change', function() {
-      var dt = jQuery('#allAssignmentsTable').DataTable();
-      var paginateControls = jQuery('#allAssignmentsTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
-      if (this.checked) { dt.page.len(-1); paginateControls.hide(); } else { dt.page.len(25); paginateControls.show(); }
-      dt.draw();
-    });
-  }
-});
-if (jQuery && jQuery.fn.DataTable) {
-  if (jQuery('#filtersTable').length > 0) {
-    var ft = jQuery('#filtersTable').DataTable({responsive:true,pageLength:10,order:[[3,'desc']],dom:'Bfrtip',buttons:['copy','csv','excel','pdf','print']});
-    jQuery('#showAllFilters').prop('checked', false);
-    jQuery('#showAllFilters').on('change', function() {
-      var paginateControls = jQuery('#filtersTable').closest('.dataTables_wrapper').find('.dataTables_paginate, .dataTables_info');
-      if (this.checked) { ft.page.len(-1); paginateControls.hide(); } else { ft.page.len(10); paginateControls.show(); }
-      ft.draw();
-    });
-  }
-}
-</script>
-</body>
-</html>
-'@
+/* --- Overview container (used by Get-AssignmentOverviewTabFragment) --- */
+.overview-container{background:var(--bg-elevated);border-radius:14px;padding:2rem;margin:1rem 0;}
+.overview-container::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);}
+.overview-header{text-align:center;margin-bottom:2rem;background:var(--bg-warm);color:var(--text);margin-left:-2rem;margin-right:-2rem;margin-top:-2rem;padding:2rem 2rem 1.5rem;border-radius:14px 14px 0 0;border-bottom:1px dashed var(--border-dashed);}
+.overview-header h2{font-family:'Geist',-apple-system,sans-serif;font-size:1.75rem;font-weight:800;margin-bottom:0.5rem;color:var(--text);letter-spacing:-0.02em;}
+.overview-header p{font-family:'Geist',-apple-system,sans-serif;font-size:1rem;color:var(--text-muted);margin:0;}
+.summary-card{background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;padding:1.5rem;text-align:center;}
+.summary-card .card-icon{width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 0.75rem;font-size:1.25rem;color:#fff;}
+.summary-card.border-primary .card-icon{background:var(--tile-steel);}
+.summary-card.border-danger .card-icon{background:var(--tile-rose);}
+.overview-tiles-row .summary-card{min-height:100px;padding:0.75rem 1rem;display:flex;flex-direction:column;justify-content:center;align-items:center;}
+.overview-tiles-row .summary-card .card-icon{width:36px;height:36px;font-size:1rem;margin:0 auto 0.4rem;}
+.overview-tiles-row .summary-card .card-title{font-family:'Geist',-apple-system,sans-serif;font-size:1.5rem;font-weight:800;margin:0.2rem 0;color:var(--text);}
+.overview-tiles-row .summary-card .card-text{min-height:2em;font-size:0.8rem;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text-muted);}
+/* --- Modern table (used by overview fragment) --- */
+.modern-table-container{background:var(--bg-elevated);border-radius:14px;overflow:hidden;border:1px solid var(--border);margin:1rem 0;}
+.modern-table-header{background:var(--bg-warm);padding:1rem 1.25rem;border-bottom:1px dashed var(--border-dashed);color:var(--text);}
+.modern-table-header h5{margin:0;font-family:'Geist Mono',ui-monospace,monospace;font-size:0.78rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-body);}
+.modern-table-header small{color:var(--text-muted);font-size:0.75rem;}
+.modern-table-body{padding:0;}
+.modern-table{margin:0;}
+.modern-table thead th{background:var(--bg-warm);border:none;font-weight:600;font-size:0.75rem;padding:0.75rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-body);}
+.modern-table tbody tr{border-bottom:1px solid var(--border);transition:background-color 0.2s;}
+.modern-table tbody tr:hover{background-color:var(--accent-soft);}
+.modern-table tbody td{padding:0.75rem;border:none;vertical-align:middle;color:var(--text-body);}
+/* --- Assignment filters bar (used by overview fragment) --- */
+.assignment-filters-modern{background:var(--bg-elevated);border-bottom:1px solid var(--border);padding:1rem 1.25rem;}
+.assignment-filters-modern .assignment-filters-inner{display:flex;flex-wrap:wrap;align-items:flex-end;gap:1rem;}
+.assignment-filters-modern .filter-group{display:flex;flex-direction:column;gap:0.25rem;}
+.assignment-filters-modern .filter-label{font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:0;font-family:'Geist Mono',ui-monospace,monospace;}
+.assignment-filters-modern .filter-select{min-width:140px;padding:0.5rem 0.75rem;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);font-size:0.78rem;color:var(--input-color);font-family:'Geist Mono',ui-monospace,monospace;}
+.assignment-filters-modern .filter-dropdown-btn{min-width:140px;text-align:left;font-family:'Geist Mono',ui-monospace,monospace;font-size:0.78rem;}
+.assignment-filters-modern .filter-checkbox-dropdown{max-height:260px;overflow-y:auto;padding:0.25rem;}
+.assignment-filters-modern .filter-checkbox-dropdown .dropdown-item{white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:0.5rem;}
+.assignment-filters-modern .filter-checkbox-dropdown .dropdown-item input{margin:0;cursor:pointer;}
+.assignment-filters-modern .filter-checkbox-dropdown label{margin:0;cursor:pointer;width:100%;}
+.assignment-filters-modern .filter-reset-btn{display:inline-flex;align-items:center;gap:0.35rem;padding:0.5rem 0.9rem;border-radius:6px;border:1px solid var(--button-border);background:var(--button-bg);font-size:0.78rem;color:var(--button-color);cursor:pointer;height:2.15rem;font-family:'Geist Mono',ui-monospace,monospace;}
+.assignment-filters-modern .filter-reset-btn:hover{background:var(--button-hover-bg);}
+[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn{background:var(--input-bg);border-color:var(--input-border);color:var(--input-color);}
+[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:hover,[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn:focus,[data-theme="dark"] .assignment-filters-modern .filter-dropdown-btn.show{background:var(--bg-warm);border-color:var(--border);color:var(--text-body);}
+[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown{background:var(--bg-elevated);border-color:var(--border);}
+[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item{color:var(--text-body);}
+[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown .dropdown-item:hover{background:var(--bg-warm);color:var(--text-body);}
+[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown label{color:var(--text-body);}
+[data-theme="dark"] .assignment-filters-modern .filter-checkbox-dropdown input.filter-cb{accent-color:var(--accent);}
+"@
+
+    $html = Get-RKSolutionsReportTemplate `
+        -TenantName $TenantName `
+        -ReportTitle 'Enrollment' `
+        -ReportSlug 'intune-enrollment-device' `
+        -Eyebrow 'DEVICE ENROLLMENT FLOW' `
+        -Lede 'Device-specific enrollment flow with policy assignments, group membership, and filter evaluation.' `
+        -Tags @('Intune', 'Device', 'Enrollment') `
+        -StatsCardsHtml $statsCardsHtml `
+        -BodyContentHtml $bodyContentHtml `
+        -CustomCss $customCss
+
     $outDir = Split-Path -Parent $OutputPath
     if ($outDir -and -not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
     if (-not [System.IO.Path]::HasExtension($OutputPath)) { $OutputPath = $OutputPath + ".html" }
-    $html = $htmlTemplate.Replace('__PH_TITLE_DEVICE__', $titleDevice).Replace('__PH_TENANT_DATE__', $tenantDisplay).Replace('__PH_DEVICE_BANNER__', $bannerDevice).Replace('__PH_OVERVIEW_NAV__', $overviewTabNav).Replace('__PH_OVERVIEW_PANE__', $overviewTabPane).Replace('__PH_DIAGRAM_TAB_ACTIVE__', $diagramTabActive).Replace('__PH_DIAGRAM_PANE_ACTIVE__', $diagramPaneActive).Replace('__PH_APPLIED_FLOW__', $AppliedFlowHtml).Replace('__PH_ARCHITECTURE_NAV__', $architectureTabNav).Replace('__PH_ARCHITECTURE__', $architectureFragment)
     [System.IO.File]::WriteAllText($OutputPath, $html, [System.Text.UTF8Encoding]::new($false))
     $OutputPath
 }

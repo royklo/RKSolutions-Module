@@ -64,6 +64,7 @@ Describe 'Consistency contract' {
             'Get-IntuneAnomaliesReport'       = @('ExportPath')
             'Get-EntraAdminRolesReport'       = @('ExportPath')
             'Get-M365LicenseAssignmentReport' = @('ExportPath')
+            'Get-CustomSecurityAttributesReport' = @('AttributeSet', 'ExportPath')
         }
     }
 

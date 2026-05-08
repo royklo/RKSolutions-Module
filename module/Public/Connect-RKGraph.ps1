@@ -31,7 +31,9 @@ function Connect-RKGraph {
             'PrivilegedEligibilitySchedule.Read.AzureADGroup',
             'Mail.Send',
             'CloudLicensing.Read',
-            'CloudPC.Read.All'
+            'CloudPC.Read.All',
+            'CustomSecAttributeAssignment.Read.All',
+            'CustomSecAttributeDefinition.Read.All'
         ),
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]

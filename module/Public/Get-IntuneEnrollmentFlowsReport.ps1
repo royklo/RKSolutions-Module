@@ -177,9 +177,13 @@ try {
     Write-Host "Device visualization report saved: $generated" -ForegroundColor Green
 
     if ($MermaidOverview) {
-        $mmdPath = [System.IO.Path]::ChangeExtension($generated, '.mmd')
-        [System.IO.File]::WriteAllText($mmdPath, $mermaidDiagram, [System.Text.UTF8Encoding]::new($false))
-        Write-Host "Mermaid file saved: $mmdPath" -ForegroundColor Green
+        if ([string]::IsNullOrWhiteSpace($mermaidDiagram)) {
+            Write-Warning "Mermaid diagram content is empty; skipping .mmd export."
+        } else {
+            $mmdPath = [System.IO.Path]::ChangeExtension($generated, '.mmd')
+            [System.IO.File]::WriteAllText($mmdPath, $mermaidDiagram, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "Mermaid file saved: $mmdPath" -ForegroundColor Green
+        }
     }
 
     if ($ExportToCsv) {

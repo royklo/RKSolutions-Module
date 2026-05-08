@@ -31,14 +31,15 @@ if (Test-Path $privatePath) {
         'Invoke-RKSolutionsWithConnection.ps1',
         'Invoke-GraphRequestWithPaging.ps1',
         'Send-EmailWithAttachment.ps1',
-        'ConvertTo-DateString.ps1'
+        'ConvertTo-DateString.ps1',
+        'Get-RKSolutionsReportTemplate.ps1'
     )
     foreach ($name in $sharedOrder) {
         $fp = Join-Path $privatePath $name
         if (Test-Path $fp) { . $fp }
     }
     # Report-specific private scripts (order matters if they depend on each other)
-    $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1')
+    $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1', 'CustomSecurityAttributes.ps1')
     foreach ($name in $domainOrder) {
         $fp = Join-Path $privatePath $name
         if (Test-Path $fp) { . $fp }
@@ -58,5 +59,6 @@ Export-ModuleMember -Function @(
     'Get-IntuneEnrollmentFlowsReport',
     'Get-IntuneAnomaliesReport',
     'Get-EntraAdminRolesReport',
-    'Get-M365LicenseAssignmentReport'
+    'Get-M365LicenseAssignmentReport',
+    'Get-CustomSecurityAttributesReport'
 )
