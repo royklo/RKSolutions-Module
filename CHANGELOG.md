@@ -38,7 +38,6 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 ### Maintenance
 
-- Rename `New-RKSolutionsReportTemplate` to `Get-RKSolutionsReportTemplate`.
 - Remove unused `$Filters` and `$AttributeNames` parameters from `Get-CustomSecurityAttributeData`.
 - Translate Dutch comments to English in `Get-ApplicationFailures`.
 - Add `CustomSecAttributeAssignment.Read.All` and `CustomSecAttributeDefinition.Read.All` scopes.
