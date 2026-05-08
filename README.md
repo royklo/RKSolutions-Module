@@ -4,7 +4,7 @@
 [CI](https://github.com/royklo/RKSolutions-Module/actions)  
 [License: MIT](LICENSE)
 
-PowerShell module for Microsoft Graph–backed reports: Intune Enrollment Flows, Intune Anomalies, Entra Admin Roles, and M365 License Assignment. Connects to Microsoft Graph and generates HTML/CSV reports.
+PowerShell module for Microsoft Graph–backed reports: Intune Enrollment Flows, Intune Anomalies, Entra Admin Roles, M365 License Assignment, and Custom Security Attributes. Connects to Microsoft Graph and generates interactive HTML reports.
 
 ## About
 
@@ -74,6 +74,7 @@ Get-IntuneEnrollmentFlowsReport -AssignmentOverviewOnly
 Get-IntuneAnomaliesReport
 Get-EntraAdminRolesReport
 Get-M365LicenseAssignmentReport
+Get-CustomSecurityAttributesReport
 
 # Disconnect when done
 Disconnect-RKGraph
@@ -89,6 +90,7 @@ Disconnect-RKGraph
 | **Get-IntuneAnomaliesReport** | Generates Intune anomalies report. |
 | **Get-EntraAdminRolesReport** | Generates Entra admin roles report. |
 | **Get-M365LicenseAssignmentReport** | Generates M365 license assignment report. |
+| **Get-CustomSecurityAttributesReport** | Generates Custom Security Attributes report across users, devices, and apps. |
 
 For full parameter details and examples, see **[Cmdlet Reference](docs/CMDLET-REFERENCE.md)**.
 

@@ -112,4 +112,28 @@ Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection
 
 ---
 
+## Get-CustomSecurityAttributesReport
+
+Generates an interactive HTML report of custom security attributes across users, devices, and enterprise applications. Auto-discovers attribute sets or accepts a specific set.
+
+
+| Parameter       | Description                                                                  |
+| --------------- | ---------------------------------------------------------------------------- |
+| **AttributeSet** | Specific attribute set to report on. If omitted, discovers and reports all. |
+| **SendEmail**   | Send report by email.                                                        |
+| **Recipient**   | Email recipient(s).                                                          |
+| **From**        | From address.                                                                |
+| **ExportPath**  | Output file path.                                                            |
+| **DebugMode**   | Enable debug output.                                                         |
+
+Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
+
+
+**Examples:**
+- `Get-CustomSecurityAttributesReport` — auto-discover all attribute sets
+- `Get-CustomSecurityAttributesReport -AttributeSet "ComplianceData"` — specific set only
+- `Get-CustomSecurityAttributesReport -SendEmail -Recipient "admin@contoso.com"` — generate and email
+
+---
+
 For full parameter sets and examples, run `Get-Help <CmdletName> -Full` in PowerShell.

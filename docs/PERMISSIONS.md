@@ -12,6 +12,7 @@ Use these when registering an app in Azure AD / Entra ID or when calling `Connec
 |------------|---------|
 | **AuditLog.Read.All** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
 | **CustomSecAttributeAssignment.Read.All** | Get-CustomSecurityAttributesReport |
+| **CustomSecAttributeDefinition.Read.All** | Get-CustomSecurityAttributesReport |
 | **CloudLicensing.Read** | Get-M365LicenseAssignmentReport |
 | **CloudPC.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport |
 | **Device.Read.All** | Get-IntuneEnrollmentFlowsReport |
@@ -57,6 +58,7 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 - CloudLicensing.Read  
 - CloudPC.Read.All
 - CustomSecAttributeAssignment.Read.All
+- CustomSecAttributeDefinition.Read.All
 
 ---
 
@@ -115,6 +117,7 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 ### Get-CustomSecurityAttributesReport
 
 - CustomSecAttributeAssignment.Read.All
+- CustomSecAttributeDefinition.Read.All
 - User.Read.All
 - Organization.Read.All
 - Mail.Send

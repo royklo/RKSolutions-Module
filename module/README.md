@@ -1,6 +1,6 @@
 # RKSolutions PowerShell Script Module
 
-This is the script implementation of the RKSolutions module. It provides cmdlets to connect to Microsoft Graph and generate reports for Intune Enrollment Flows, Intune Anomalies, Entra Admin Roles, and M365 License Assignment.
+This is the script implementation of the RKSolutions module. It provides cmdlets to connect to Microsoft Graph and generate reports for Intune Enrollment Flows, Intune Anomalies, Entra Admin Roles, M365 License Assignment, and Custom Security Attributes.
 
 > **Requires PowerShell 7.0 or higher.** Windows PowerShell 5.1 is not supported.
 
@@ -17,7 +17,8 @@ module/
 │   ├── Get-IntuneEnrollmentFlowsReport.ps1
 │   ├── Get-IntuneAnomaliesReport.ps1
 │   ├── Get-EntraAdminRolesReport.ps1
-│   └── Get-M365LicenseAssignmentReport.ps1
+│   ├── Get-M365LicenseAssignmentReport.ps1
+│   └── Get-CustomSecurityAttributesReport.ps1
 └── Private/                   # Helpers (not exported; used internally by Public cmdlets)
     ├── Connect-ToMgGraph.ps1
     ├── Invoke-RKSolutionsWithConnection.ps1
@@ -26,10 +27,12 @@ module/
     ├── ConvertTo-DateString.ps1
     ├── Install-Requirements.ps1
     ├── Export-Results.ps1
+    ├── Get-RKSolutionsReportTemplate.ps1
     ├── IntuneEnrollmentFlows.ps1
     ├── IntuneAnomalies.ps1
     ├── EntraAdminRoles.ps1
-    └── M365License.ps1
+    ├── M365License.ps1
+    └── CustomSecurityAttributes.ps1
 ```
 
 ## Loading the script module
