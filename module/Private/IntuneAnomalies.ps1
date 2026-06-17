@@ -1694,40 +1694,62 @@ function Get-ApplicationFailures {
     # Fix char encoding to UTF-8
     $Response = [system.Text.Encoding]::UTF8.GetString(($DataFile).ToCharArray()) | ConvertFrom-Json
 
-    # Build result array from response values
-    $ReturnObject = New-Object System.Collections.ArrayList
+    # Pre-build app lookup (id -> app) so the per-row joins are O(1) instead of O(N) Where-Object scans.
+    $appLookup = @{}
+    foreach ($a in $apps) { if ($a.Id) { $appLookup[[string]$a.Id] = $a } }
 
-    # For each value set in the response
+    # First pass: materialise the schema-flattened rows that have a matching app,
+    # collecting unique ApplicationIds so we can batch-fetch their assignments.
+    $rows = [System.Collections.Generic.List[hashtable]]::new()
+    $expandIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($value in $Response.Values) {
-        # Create a new line object (hashtable)
         $LineObject = @{ }
-
-        # For each property in the schema
         foreach ($prop in $Response.Schema) {
             $LineObject[$prop.Column] = $value[$Response.Schema.IndexOf($prop)]
         }
-        # Check if $LineObject.ApplicationId can be found in $apps
-        if ($apps | Where-Object { $_.Id -eq $LineObject.ApplicationId }) {
-            $AppAssignment = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$($LineObject.ApplicationId)/?`$expand=assignments").assignments
-            $AssignmentStatus = $false
-            if ($AppAssignment) {
-                $AssignmentStatus = $true
-            }
-
-            # Use Platform_loc instead of Platform for better readability
-            $PlatformName = if ($LineObject.Platform_loc) { $LineObject.Platform_loc } else { $LineObject.Platform }
-
-            $ReturnObject.Add([PSCustomObject][ordered]@{
-                    Customer               = $tenantname
-                    Application            = ($apps | Where-Object { $_.Id -eq $LineObject.ApplicationId }).displayName
-                    Platform               = $PlatformName
-                    Version                = $LineObject.AppVersion
-                    AssignmentStatus       = $AssignmentStatus
-                    FailedUserCount        = $LineObject.FailedUserCount
-                    FailedDeviceCount      = $LineObject.FailedDeviceCount
-                    FailedDevicePercentage = [double]($LineObject.FailedDevicePercentage / 100).toString('0.00')
-                }) | Out-Null
+        $appId = [string]$LineObject.ApplicationId
+        if ($appLookup.ContainsKey($appId)) {
+            $rows.Add($LineObject)
+            [void]$expandIds.Add($appId)
         }
+    }
+
+    # Batch-fetch ?$expand=assignments for every failed app in parallel sub-requests.
+    $assignmentStatusByAppId = @{}
+    if ($expandIds.Count -gt 0) {
+        $expandRequests = foreach ($id in $expandIds) {
+            [PSCustomObject]@{
+                Id  = "app:$id"
+                Url = "/deviceAppManagement/mobileApps/$id/?`$expand=assignments"
+            }
+        }
+        $expandResponses = Invoke-RKGraphBatch -Requests @($expandRequests) -Activity 'App assignments'
+        foreach ($resp in $expandResponses) {
+            if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
+            $appId = $resp.Id -replace '^app:', ''
+            $hasAssignments = $resp.Body.assignments -and (@($resp.Body.assignments).Count -gt 0)
+            $assignmentStatusByAppId[$appId] = [bool]$hasAssignments
+        }
+    }
+
+    # Build result array from the prepared rows using O(1) lookups.
+    $ReturnObject = New-Object System.Collections.ArrayList
+    foreach ($LineObject in $rows) {
+        $appId = [string]$LineObject.ApplicationId
+        $PlatformName = if ($LineObject.Platform_loc) { $LineObject.Platform_loc } else { $LineObject.Platform }
+        $AssignmentStatus = $false
+        if ($assignmentStatusByAppId.ContainsKey($appId)) { $AssignmentStatus = $assignmentStatusByAppId[$appId] }
+
+        $ReturnObject.Add([PSCustomObject][ordered]@{
+                Customer               = $tenantname
+                Application            = $appLookup[$appId].displayName
+                Platform               = $PlatformName
+                Version                = $LineObject.AppVersion
+                AssignmentStatus       = $AssignmentStatus
+                FailedUserCount        = $LineObject.FailedUserCount
+                FailedDeviceCount      = $LineObject.FailedDeviceCount
+                FailedDevicePercentage = [double]($LineObject.FailedDevicePercentage / 100).toString('0.00')
+            }) | Out-Null
     }
 
     # Clean up temporary data file
