@@ -54,21 +54,25 @@ Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection
 
 ## Get-IntuneAnomaliesReport
 
-Generates Intune anomalies report.
+Generates an interactive HTML report covering Intune app failures, multi-user devices, missing Autopilot hashes, inactive devices, non-compliant devices, disabled primary users, BitLocker key escrow, Windows LAPS backup, and deprecated Settings Catalog settings.
 
 
-| Parameter    | Description                    |
-| ------------ | ------------------------------ |
-| **SendEmail** | Send report by email.          |
-| **Recipient** | Email recipient(s).            |
-| **From**      | From address.                  |
-| **ExportPath** | Output file path.            |
-| **DebugMode** | Enable debug output.          |
+| Parameter               | Description                                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SendEmail**           | Send report by email.                                                                                                                                      |
+| **Recipient**           | Email recipient(s).                                                                                                                                        |
+| **From**                | From address.                                                                                                                                              |
+| **ExportPath**          | Output file path.                                                                                                                                          |
+| **ShowExcludedDevices** | Also surface devices that were *deliberately* excluded from BitLocker / LAPS policies (via exclude group or assignment filter) as Info-severity rows. Off by default so the report stays focused on actual anomalies. |
+| **DebugMode**           | Enable debug output.                                                                                                                                       |
 
 Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 
 
-**Example:** `Get-IntuneAnomaliesReport`
+**Examples:**
+- `Get-IntuneAnomaliesReport` — generate the full report
+- `Get-IntuneAnomaliesReport -ShowExcludedDevices` — also list devices that admins explicitly excluded from BitLocker / LAPS policies
+- `Get-IntuneAnomaliesReport -SendEmail -Recipient 'admin@contoso.com' -From 'reports@contoso.com'` — generate and email
 
 ---
 

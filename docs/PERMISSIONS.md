@@ -11,8 +11,10 @@ Use these when registering an app in Azure AD / Entra ID or when calling `Connec
 | Permission | Used by |
 |------------|---------|
 | **AuditLog.Read.All** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
+| **BitlockerKey.ReadBasic.All** | Get-IntuneAnomaliesReport |
 | **CustomSecAttributeAssignment.Read.All** | Get-CustomSecurityAttributesReport |
 | **CustomSecAttributeDefinition.Read.All** | Get-CustomSecurityAttributesReport |
+| **DeviceLocalCredential.ReadBasic.All** | Get-IntuneAnomaliesReport |
 | **CloudLicensing.Read** | Get-M365LicenseAssignmentReport |
 | **CloudPC.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport |
 | **Device.Read.All** | Get-IntuneEnrollmentFlowsReport |
@@ -59,6 +61,8 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 - CloudPC.Read.All
 - CustomSecAttributeAssignment.Read.All
 - CustomSecAttributeDefinition.Read.All
+- BitlockerKey.ReadBasic.All
+- DeviceLocalCredential.ReadBasic.All
 
 ---
 
@@ -78,6 +82,7 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 
 - User.Read  
 - User.Read.All  
+- Group.Read.All  
 - DeviceManagementManagedDevices.Read.All  
 - DeviceManagementConfiguration.Read.All  
 - DeviceManagementServiceConfig.Read.All  
@@ -85,6 +90,10 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 - Directory.Read.All  
 - Mail.Send  
 - CloudPC.Read.All  
+- BitlockerKey.ReadBasic.All  
+- DeviceLocalCredential.ReadBasic.All  
+
+The two new scopes drive the BitLocker key escrow and Windows LAPS backup anomaly checks. They are intentionally the **ReadBasic** variants: presence and metadata only, never the recovery password or local admin password itself.  
 
 ---
 

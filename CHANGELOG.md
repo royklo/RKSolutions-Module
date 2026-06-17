@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Conventional Commits](https://www.conventionalcommits.org/) and this project adheres to [Semantic Versioning](https://semver.org/). Release notes for each version are also generated from git history by the automation pipeline using the same conventional types (feat, fix, docs, refactor, test, etc.).
 
+
+
+## [1.2.0] - 2026-06-17
+
+Adds BitLocker, Windows LAPS, and deprecated-settings detection to `Get-IntuneAnomaliesReport`, and significantly speeds the report up via Graph `$batch`.
+
+### New detections
+
+- **BitLocker key escrow** — flags devices where Intune assigned a BitLocker policy but no OS-volume recovery key is in Entra, plus devices that aren't encrypted at all. Resolves assignments across Settings Catalog, legacy device configurations, and Endpoint Security intents, honouring include / exclude groups and assignment filters.
+- **Windows LAPS backup** — flags devices covered by an Entra-backed LAPS policy with no local admin credential backed up, or whose most recent backup is older than 60 days.
+- **Deprecated Settings Catalog settings** — walks every Settings Catalog policy in the tenant and flags settings Microsoft has marked deprecated. Catalog data is cached.
+- New `-ShowExcludedDevices` switch surfaces devices that were deliberately excluded from BitLocker / LAPS policies (via exclude group or assignment filter) as Info-severity rows. Off by default.
+
+### Performance
+
+End-to-end report runtime on a 75-policy / 2-device tenant dropped from ~19s to ~8s. Larger tenants see proportionally bigger wins.
+
+The main lever is a new private Graph `$batch` helper used across five hot paths (compliance fetch, Settings Catalog policy `/settings`, app `?$expand=assignments`, group `transitiveMembers`, and the prior `$expand=settings` paginated fetch). Two quadratic per-row lookups in the BitLocker/LAPS and app-failure code paths were also replaced with hashtable indexes.
+
+### Fixes
+
+- DataTables didn't always initialise correctly in the rendered report — fixed.
+- The two quadratic lookups above no longer slow down the report at higher device counts.
+
+### Permissions
+
+The Intune Anomalies report now requires two additional Graph scopes to check BitLocker and LAPS state:
+
+- `BitlockerKey.ReadBasic.All`
+- `DeviceLocalCredential.ReadBasic.All`
+
+Both are the `ReadBasic` variants — the report can confirm that a recovery key or password backup exists, but never reads the actual recovery password or local admin password. `Connect-RKGraph` auto-detects missing scopes on existing tokens and re-grants consent for you.
+
+### Polish
+
+- BitLocker and LAPS tabs drop the Manufacturer, Model, and Policy Assigned columns (irrelevant to the security finding each row describes). Inventory-focused tabs keep them.
+- Every stat tile in the report now uses a distinct color.
+
+---
+
 ## [1.1.0]
 
 ### Features
