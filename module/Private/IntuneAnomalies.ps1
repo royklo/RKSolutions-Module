@@ -156,10 +156,7 @@ function New-IntuneAnomaliesHTMLReport {
             <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.Serialnumber))</td>
-            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceManufacturer))</td>
-            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceModel))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.IsEncrypted))</td>
-            <td>$([System.Net.WebUtility]::HtmlEncode($item.PolicyAssigned))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.AppliedPolicies))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.KeyEscrowed))</td>
             <td><span class="rk-badge $sevClass">$([System.Net.WebUtility]::HtmlEncode($item.Severity))</span></td>
@@ -178,10 +175,7 @@ function New-IntuneAnomaliesHTMLReport {
             <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceName))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.PrimaryUser))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.Serialnumber))</td>
-            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceManufacturer))</td>
-            <td>$([System.Net.WebUtility]::HtmlEncode($item.DeviceModel))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.OwnerType))</td>
-            <td>$([System.Net.WebUtility]::HtmlEncode($item.PolicyAssigned))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.AppliedPolicies))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.LastBackupDateTime))</td>
             <td>$([System.Net.WebUtility]::HtmlEncode($item.BackupAgeDays))</td>
@@ -260,17 +254,17 @@ function New-IntuneAnomaliesHTMLReport {
                 <div class="rk-stat-number">$Report_DisabledPrimaryUsers_Count</div>
                 <div class="rk-stat-caption">Disabled primary users</div>
             </div>
-            <div class="rk-stat-tile t-rust">
+            <div class="rk-stat-tile t-steel">
                 <div class="rk-stat-eyebrow">BITLOCKER</div>
                 <div class="rk-stat-number">$Report_BitLockerStatus_Count</div>
                 <div class="rk-stat-caption">Encryption / escrow gaps</div>
             </div>
-            <div class="rk-stat-tile t-amber">
+            <div class="rk-stat-tile t-indigo">
                 <div class="rk-stat-eyebrow">LAPS BACKUP</div>
                 <div class="rk-stat-number">$Report_LapsStatus_Count</div>
                 <div class="rk-stat-caption">LAPS coverage gaps</div>
             </div>
-            <div class="rk-stat-tile t-violet">
+            <div class="rk-stat-tile t-pink">
                 <div class="rk-stat-eyebrow">DEPRECATED SETTINGS</div>
                 <div class="rk-stat-number">$Report_DeprecatedSettings_Count</div>
                 <div class="rk-stat-caption">Across $Report_DeprecatedPolicies_Count polic(ies)</div>
@@ -689,9 +683,6 @@ function New-IntuneAnomaliesHTMLReport {
             <select id="bitLockerUserFilter" class="form-select" style="max-width:180px;">
                 <option value="">All Users</option>
             </select>
-            <select id="bitLockerPolicyAssignedFilter" class="form-select" style="max-width:180px;">
-                <option value="">Any Policy State</option>
-            </select>
             <select id="bitLockerKeyEscrowedFilter" class="form-select" style="max-width:180px;">
                 <option value="">Any Key State</option>
             </select>
@@ -719,10 +710,7 @@ function New-IntuneAnomaliesHTMLReport {
                             <th>Device Name</th>
                             <th>Primary User</th>
                             <th>Serial Number</th>
-                            <th>Manufacturer</th>
-                            <th>Model</th>
                             <th>Encrypted</th>
-                            <th>Policy Assigned</th>
                             <th>Applied Policies</th>
                             <th>Key Escrowed</th>
                             <th>Severity</th>
@@ -753,9 +741,6 @@ function New-IntuneAnomaliesHTMLReport {
             <select id="lapsOwnerFilter" class="form-select" style="max-width:180px;">
                 <option value="">All Ownerships</option>
             </select>
-            <select id="lapsPolicyAssignedFilter" class="form-select" style="max-width:180px;">
-                <option value="">Any Policy State</option>
-            </select>
             <select id="lapsSeverityFilter" class="form-select" style="max-width:180px;">
                 <option value="">All Severities</option>
             </select>
@@ -780,10 +765,7 @@ function New-IntuneAnomaliesHTMLReport {
                             <th>Device Name</th>
                             <th>Primary User</th>
                             <th>Serial Number</th>
-                            <th>Manufacturer</th>
-                            <th>Model</th>
                             <th>Ownership</th>
-                            <th>Policy Assigned</th>
                             <th>Applied Policies</th>
                             <th>Last Backup</th>
                             <th>Backup Age (days)</th>
@@ -897,16 +879,14 @@ function New-IntuneAnomaliesHTMLReport {
             populateSelectFromColumn('bitLockerCustomerFilter', bitLockerTable, 0);
             populateSelectFromColumn('bitLockerDeviceFilter', bitLockerTable, 1);
             populateSelectFromColumn('bitLockerUserFilter', bitLockerTable, 2);
-            populateSelectFromColumn('bitLockerPolicyAssignedFilter', bitLockerTable, 7);
-            populateSelectFromColumn('bitLockerKeyEscrowedFilter', bitLockerTable, 9);
-            populateSelectFromColumn('bitLockerSeverityFilter', bitLockerTable, 10);
+            populateSelectFromColumn('bitLockerKeyEscrowedFilter', bitLockerTable, 6);
+            populateSelectFromColumn('bitLockerSeverityFilter', bitLockerTable, 7);
 
             populateSelectFromColumn('lapsCustomerFilter', lapsTable, 0);
             populateSelectFromColumn('lapsDeviceFilter', lapsTable, 1);
             populateSelectFromColumn('lapsUserFilter', lapsTable, 2);
-            populateSelectFromColumn('lapsOwnerFilter', lapsTable, 6);
-            populateSelectFromColumn('lapsPolicyAssignedFilter', lapsTable, 7);
-            populateSelectFromColumn('lapsSeverityFilter', lapsTable, 11);
+            populateSelectFromColumn('lapsOwnerFilter', lapsTable, 4);
+            populateSelectFromColumn('lapsSeverityFilter', lapsTable, 8);
 
             populateSelectFromColumn('deprecatedPlatformFilter', deprecatedTable, 1);
         }
@@ -1109,7 +1089,6 @@ function New-IntuneAnomaliesHTMLReport {
             var customerFilter = `$('#bitLockerCustomerFilter').val();
             var deviceFilter = `$('#bitLockerDeviceFilter').val();
             var userFilter = `$('#bitLockerUserFilter').val();
-            var policyAssignedFilter = `$('#bitLockerPolicyAssignedFilter').val();
             var keyEscrowedFilter = `$('#bitLockerKeyEscrowedFilter').val();
             var severityFilter = `$('#bitLockerSeverityFilter').val();
 
@@ -1118,15 +1097,14 @@ function New-IntuneAnomaliesHTMLReport {
             if (customerFilter) bitLockerTable.column(0).search('^' + customerFilter + '`$', true, false);
             if (deviceFilter) bitLockerTable.column(1).search('^' + deviceFilter + '`$', true, false);
             if (userFilter) bitLockerTable.column(2).search('^' + userFilter + '`$', true, false);
-            if (policyAssignedFilter) bitLockerTable.column(7).search('^' + policyAssignedFilter + '`$', true, false);
-            if (keyEscrowedFilter) bitLockerTable.column(9).search('^' + keyEscrowedFilter + '`$', true, false);
-            if (severityFilter) bitLockerTable.column(10).search(severityFilter, true, false);
+            if (keyEscrowedFilter) bitLockerTable.column(6).search('^' + keyEscrowedFilter + '`$', true, false);
+            if (severityFilter) bitLockerTable.column(7).search(severityFilter, true, false);
 
             bitLockerTable.draw();
         };
 
         window.clearBitLockerFilters = function() {
-            `$('#bitLockerCustomerFilter, #bitLockerDeviceFilter, #bitLockerUserFilter, #bitLockerPolicyAssignedFilter, #bitLockerKeyEscrowedFilter, #bitLockerSeverityFilter').val('');
+            `$('#bitLockerCustomerFilter, #bitLockerDeviceFilter, #bitLockerUserFilter, #bitLockerKeyEscrowedFilter, #bitLockerSeverityFilter').val('');
             bitLockerTable.search('').columns().search('').draw();
         };
 
@@ -1136,7 +1114,6 @@ function New-IntuneAnomaliesHTMLReport {
             var deviceFilter = `$('#lapsDeviceFilter').val();
             var userFilter = `$('#lapsUserFilter').val();
             var ownerFilter = `$('#lapsOwnerFilter').val();
-            var policyAssignedFilter = `$('#lapsPolicyAssignedFilter').val();
             var severityFilter = `$('#lapsSeverityFilter').val();
 
             lapsTable.columns().search('').draw();
@@ -1144,15 +1121,14 @@ function New-IntuneAnomaliesHTMLReport {
             if (customerFilter) lapsTable.column(0).search('^' + customerFilter + '`$', true, false);
             if (deviceFilter) lapsTable.column(1).search('^' + deviceFilter + '`$', true, false);
             if (userFilter) lapsTable.column(2).search('^' + userFilter + '`$', true, false);
-            if (ownerFilter) lapsTable.column(6).search('^' + ownerFilter + '`$', true, false);
-            if (policyAssignedFilter) lapsTable.column(7).search('^' + policyAssignedFilter + '`$', true, false);
-            if (severityFilter) lapsTable.column(11).search(severityFilter, true, false);
+            if (ownerFilter) lapsTable.column(4).search('^' + ownerFilter + '`$', true, false);
+            if (severityFilter) lapsTable.column(8).search(severityFilter, true, false);
 
             lapsTable.draw();
         };
 
         window.clearLapsFilters = function() {
-            `$('#lapsCustomerFilter, #lapsDeviceFilter, #lapsUserFilter, #lapsOwnerFilter, #lapsPolicyAssignedFilter, #lapsSeverityFilter').val('');
+            `$('#lapsCustomerFilter, #lapsDeviceFilter, #lapsUserFilter, #lapsOwnerFilter, #lapsSeverityFilter').val('');
             lapsTable.search('').columns().search('').draw();
         };
 
@@ -1205,12 +1181,12 @@ function New-IntuneAnomaliesHTMLReport {
         });
 
         // Auto-apply filters on change - BitLocker
-        `$('#bitLockerCustomerFilter, #bitLockerDeviceFilter, #bitLockerUserFilter, #bitLockerPolicyAssignedFilter, #bitLockerKeyEscrowedFilter, #bitLockerSeverityFilter').on('change', function() {
+        `$('#bitLockerCustomerFilter, #bitLockerDeviceFilter, #bitLockerUserFilter, #bitLockerKeyEscrowedFilter, #bitLockerSeverityFilter').on('change', function() {
             applyBitLockerFilters();
         });
 
         // Auto-apply filters on change - Windows LAPS
-        `$('#lapsCustomerFilter, #lapsDeviceFilter, #lapsUserFilter, #lapsOwnerFilter, #lapsPolicyAssignedFilter, #lapsSeverityFilter').on('change', function() {
+        `$('#lapsCustomerFilter, #lapsDeviceFilter, #lapsUserFilter, #lapsOwnerFilter, #lapsSeverityFilter').on('change', function() {
             applyLapsFilters();
         });
 
@@ -2281,8 +2257,8 @@ function Resolve-IntuneBitLockerAnomalies {
             if (-not $isEncrypted) {
                 $out.Add([PSCustomObject]@{
                     Customer = $TenantName; DeviceName = $d.DeviceName; PrimaryUser = $d.PrimaryUser
-                    Serialnumber = $d.Serialnumber; DeviceManufacturer = $d.DeviceManufacturer; DeviceModel = $d.DeviceModel
-                    IsEncrypted = 'No'; PolicyAssigned = 'Unknown'; AppliedPolicies = ''
+                    Serialnumber = $d.Serialnumber
+                    IsEncrypted = 'No'; AppliedPolicies = ''
                     KeyEscrowed = 'Unknown'
                     Status = 'Device not encrypted (no Azure AD device id to verify policy / key state)'
                     Severity = 'Warning'
@@ -2315,10 +2291,7 @@ function Resolve-IntuneBitLockerAnomalies {
             DeviceName         = $d.DeviceName
             PrimaryUser        = $d.PrimaryUser
             Serialnumber       = $d.Serialnumber
-            DeviceManufacturer = $d.DeviceManufacturer
-            DeviceModel        = $d.DeviceModel
             IsEncrypted        = if ($isEncrypted) { 'Yes' } else { 'No' }
-            PolicyAssigned     = if ($applied.Count -gt 0) { 'Yes' } elseif ($excluded.Count -gt 0) { 'Excluded' } else { 'No' }
             AppliedPolicies    = if ($applied.Count -gt 0) { ($applied | ForEach-Object { $_.PolicyName }) -join '; ' } else { ($excluded | ForEach-Object { "$($_.PolicyName) [$($_.Reason)]" }) -join '; ' }
             KeyEscrowed        = if ($hasKey) { 'Yes' } else { 'No' }
             Status             = $status
@@ -2388,10 +2361,7 @@ function Resolve-IntuneLapsAnomalies {
             DeviceName         = $d.DeviceName
             PrimaryUser        = $d.PrimaryUser
             Serialnumber       = $d.Serialnumber
-            DeviceManufacturer = $d.DeviceManufacturer
-            DeviceModel        = $d.DeviceModel
             OwnerType          = $d.OwnerType
-            PolicyAssigned     = if ($applied.Count -gt 0) { 'Yes' } elseif ($excluded.Count -gt 0) { 'Excluded' } else { 'No' }
             AppliedPolicies    = if ($applied.Count -gt 0) { ($applied | ForEach-Object { $_.PolicyName }) -join '; ' } else { ($excluded | ForEach-Object { "$($_.PolicyName) [$($_.Reason)]" }) -join '; ' }
             LastBackupDateTime = if ($lastBackup) { $lastBackup.ToString('yyyy-MM-dd HH:mm') } else { '' }
             BackupAgeDays      = if ($null -ne $ageDays) { $ageDays } else { '' }
