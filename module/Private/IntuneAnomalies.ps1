@@ -2255,13 +2255,16 @@ function Resolve-IntuneBitLockerAnomalies {
         # one anomaly we can detect from the managed-device record alone.
         if (-not $aadId) {
             if (-not $isEncrypted) {
-                $out.Add([PSCustomObject]@{
-                    Customer = $TenantName; DeviceName = $d.DeviceName; PrimaryUser = $d.PrimaryUser
-                    Serialnumber = $d.Serialnumber
-                    IsEncrypted = 'No'; AppliedPolicies = ''
-                    KeyEscrowed = 'Unknown'
-                    Status = 'Device not encrypted (no Azure AD device id to verify policy / key state)'
-                    Severity = 'Warning'
+                $out.Add([PSCustomObject][ordered]@{
+                    Customer        = $TenantName
+                    DeviceName      = $d.DeviceName
+                    PrimaryUser     = $d.PrimaryUser
+                    Serialnumber    = $d.Serialnumber
+                    IsEncrypted     = 'No'
+                    AppliedPolicies = ''
+                    KeyEscrowed     = 'Unknown'
+                    Severity        = 'Warning'
+                    Status          = 'Device not encrypted (no Azure AD device id to verify policy / key state)'
                 })
             }
             continue
@@ -2286,7 +2289,7 @@ function Resolve-IntuneBitLockerAnomalies {
         elseif (-not $isEncrypted)                            { $status = 'BitLocker policy assigned but device not encrypted';        $severity = 'Critical' }
         else                                                  { continue }   # Healthy.
 
-        $out.Add([PSCustomObject]@{
+        $out.Add([PSCustomObject][ordered]@{
             Customer           = $TenantName
             DeviceName         = $d.DeviceName
             PrimaryUser        = $d.PrimaryUser
@@ -2294,8 +2297,8 @@ function Resolve-IntuneBitLockerAnomalies {
             IsEncrypted        = if ($isEncrypted) { 'Yes' } else { 'No' }
             AppliedPolicies    = if ($applied.Count -gt 0) { ($applied | ForEach-Object { $_.PolicyName }) -join '; ' } else { ($excluded | ForEach-Object { "$($_.PolicyName) [$($_.Reason)]" }) -join '; ' }
             KeyEscrowed        = if ($hasKey) { 'Yes' } else { 'No' }
-            Status             = $status
             Severity           = $severity
+            Status             = $status
         })
     }
     return $out
@@ -2356,17 +2359,17 @@ function Resolve-IntuneLapsAnomalies {
         elseif ($lastBackup -and $lastBackup -lt $cutoff)                { $status = "LAPS backup stale (> $MaxBackupAgeDays days, rotation may be stalled)"; $severity = 'Warning' }
         else { continue }   # Healthy.
 
-        $out.Add([PSCustomObject]@{
+        $out.Add([PSCustomObject][ordered]@{
             Customer           = $TenantName
             DeviceName         = $d.DeviceName
             PrimaryUser        = $d.PrimaryUser
             Serialnumber       = $d.Serialnumber
-            OwnerType          = $d.OwnerType
+            OwnerType          = $d.DeviceOwnership
             AppliedPolicies    = if ($applied.Count -gt 0) { ($applied | ForEach-Object { $_.PolicyName }) -join '; ' } else { ($excluded | ForEach-Object { "$($_.PolicyName) [$($_.Reason)]" }) -join '; ' }
             LastBackupDateTime = if ($lastBackup) { $lastBackup.ToString('yyyy-MM-dd HH:mm') } else { '' }
             BackupAgeDays      = if ($null -ne $ageDays) { $ageDays } else { '' }
-            Status             = $status
             Severity           = $severity
+            Status             = $status
         })
     }
     return $out

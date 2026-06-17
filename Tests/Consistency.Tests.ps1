@@ -185,8 +185,8 @@ Describe 'BitLocker / LAPS anomaly resolver output contracts' {
         }
         $row | Should -Not -BeNullOrEmpty -Because 'an unencrypted device with no aadId must surface as an anomaly row'
         $actualColumns = @($row.PSObject.Properties.Name)
-        $expectedColumns = @('Customer','DeviceName','PrimaryUser','Serialnumber','IsEncrypted','AppliedPolicies','KeyEscrowed','Status','Severity')
-        $actualColumns | Should -Be $expectedColumns -Because 'BitLocker anomaly rows must match the HTML template <td> order'
+        $expectedColumns = @('Customer','DeviceName','PrimaryUser','Serialnumber','IsEncrypted','AppliedPolicies','KeyEscrowed','Severity','Status')
+        $actualColumns | Should -Be $expectedColumns -Because 'BitLocker anomaly rows must match the HTML template <td> order (Severity column comes before Status)'
     }
 
     It 'Resolve-IntuneLapsAnomalies emits the documented column set in order' {
@@ -221,6 +221,10 @@ Describe 'BitLocker / LAPS anomaly resolver output contracts' {
                 LapsCredentialByDeviceId   = @{}
                 LapsCredentialByDeviceName = @{}
             }
+            # Use the REAL field names produced by Get-AllDeviceData so a typo'd
+            # resolver lookup (e.g. $d.OwnerType when the device exposes DeviceOwnership)
+            # is caught by this test instead of being silently hidden behind a synthetic
+            # field. See FINDINGS: "synthetic-fixture-hides-field-name-bug".
             $d = [PSCustomObject]@{
                 DeviceName         = 'TEST-DEVICE-1'
                 AzureAdDeviceId    = '11111111-2222-3333-4444-555555555555'
@@ -229,15 +233,16 @@ Describe 'BitLocker / LAPS anomaly resolver output contracts' {
                 Serialnumber       = 'TEST-SN-1'
                 DeviceManufacturer = 'TestCorp'
                 DeviceModel        = 'TestModel'
-                OwnerType          = 'company'
+                DeviceOwnership    = 'company'   # matches Get-AllDeviceData's output property
             }
             $rows = Resolve-IntuneLapsAnomalies -Devices @($d) -Context $ctx -TenantName 'TestTenant'
             $rows[0]
         }
         $row | Should -Not -BeNullOrEmpty -Because 'a device covered by a LAPS policy with no credential must surface'
         $actualColumns = @($row.PSObject.Properties.Name)
-        $expectedColumns = @('Customer','DeviceName','PrimaryUser','Serialnumber','OwnerType','AppliedPolicies','LastBackupDateTime','BackupAgeDays','Status','Severity')
-        $actualColumns | Should -Be $expectedColumns -Because 'LAPS anomaly rows must match the HTML template <td> order'
+        $expectedColumns = @('Customer','DeviceName','PrimaryUser','Serialnumber','OwnerType','AppliedPolicies','LastBackupDateTime','BackupAgeDays','Severity','Status')
+        $actualColumns | Should -Be $expectedColumns -Because 'LAPS anomaly rows must match the HTML template <td> order (Severity column comes before Status)'
+        $row.OwnerType | Should -Be 'company' -Because 'the LAPS resolver must read the device ownership from the same field Get-AllDeviceData emits (DeviceOwnership), otherwise the Ownership column will be blank on every real device'
     }
 }
 
