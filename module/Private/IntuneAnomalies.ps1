@@ -1802,14 +1802,45 @@ function Get-BitLockerLapsAssignmentContext {
     $context.Filters = $script:AllFilters
 
     # 2. Discover Settings Catalog policies that contain BitLocker or LAPS settings.
-    #    $expand=settings returns every setting on the policy in one round trip; matching
-    #    by settingDefinitionId prefix lets us identify the policy regardless of name.
+    #    Two-step pattern: list policies (small payload, fits in 1-2 pages) then $batch-fetch
+    #    /settings per policy. Avoids Graph hard-capping page size when $expand=settings is used
+    #    (observed ~1-2 policies per page on cosmos-backed tenants); batch sub-requests execute
+    #    server-side in parallel, so ~75 policies finish in ~4 batched round trips.
     Write-Host '  Discovering Settings Catalog policies (BitLocker / LAPS)...' -ForegroundColor Cyan
     $configPolicies = @()
+    $swCfg = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        $configPolicies = Invoke-GraphRequestWithPaging -Uri 'https://graph.microsoft.com/beta/deviceManagement/configurationPolicies?$expand=settings'
+        $configPolicies = Invoke-GraphRequestWithPaging -Uri 'https://graph.microsoft.com/beta/deviceManagement/configurationPolicies?$top=999'
     }
-    catch { Write-Warning "configurationPolicies fetch failed: $($_.Exception.Message)" }
+    catch { Write-Warning "configurationPolicies list fetch failed: $($_.Exception.Message)" }
+    $swCfg.Stop()
+    Write-Verbose ("[BitLockerLaps] configurationPolicies list: {0:N2}s ({1} policies)" -f $swCfg.Elapsed.TotalSeconds, $configPolicies.Count)
+
+    if ($configPolicies.Count -gt 0) {
+        $swSet = [System.Diagnostics.Stopwatch]::StartNew()
+        $settingsRequests = foreach ($p in $configPolicies) {
+            [PSCustomObject]@{
+                Id  = "cps:$($p.id)"
+                Url = "/deviceManagement/configurationPolicies/$($p.id)/settings"
+            }
+        }
+        $settingsResponses = Invoke-RKGraphBatch -Requests @($settingsRequests) -Activity 'Settings Catalog policy settings'
+        $settingsByPolicyId = @{}
+        foreach ($resp in $settingsResponses) {
+            if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
+            $pid = $resp.Id -replace '^cps:', ''
+            $settingsByPolicyId[$pid] = @($resp.Body.value)
+        }
+        # Attach settings back onto each policy so the existing loop below stays unchanged.
+        foreach ($p in $configPolicies) {
+            $s = $null
+            if ($settingsByPolicyId.ContainsKey($p.id)) { $s = $settingsByPolicyId[$p.id] }
+            if ($p.PSObject.Properties['settings']) { $p.settings = $s }
+            else { $p | Add-Member -NotePropertyName settings -NotePropertyValue $s -Force }
+        }
+        $swSet.Stop()
+        Write-Verbose ("[BitLockerLaps] Settings batch-fetch: {0:N2}s ({1} policies)" -f $swSet.Elapsed.TotalSeconds, $configPolicies.Count)
+    }
     $context.ConfigurationPolicies = $configPolicies
 
     foreach ($policy in $configPolicies) {
