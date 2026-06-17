@@ -30,15 +30,19 @@ if (Test-Path $privatePath) {
         'Connect-ToMgGraph.ps1',
         'Invoke-RKSolutionsWithConnection.ps1',
         'Invoke-GraphRequestWithPaging.ps1',
+        'Invoke-RKGraphBatch.ps1',
         'Send-EmailWithAttachment.ps1',
         'ConvertTo-DateString.ps1',
-        'Get-RKSolutionsReportTemplate.ps1'
+        'Get-RKSolutionsReportTemplate.ps1',
+        'Get-RKIntuneSettingsCatalog.ps1'
     )
     foreach ($name in $sharedOrder) {
         $fp = Join-Path $privatePath $name
         if (Test-Path $fp) { . $fp }
     }
-    # Report-specific private scripts (order matters if they depend on each other)
+    # Report-specific private scripts. IntuneAnomalies leans on helpers
+    # (Get-DetailedPolicyAssignments, Test-IntuneFilter, $script:AllFilters) defined
+    # in IntuneEnrollmentFlows, so it must be loaded after it.
     $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1', 'CustomSecurityAttributes.ps1')
     foreach ($name in $domainOrder) {
         $fp = Join-Path $privatePath $name

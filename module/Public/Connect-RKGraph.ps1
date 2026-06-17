@@ -33,7 +33,9 @@ function Connect-RKGraph {
             'CloudLicensing.Read',
             'CloudPC.Read.All',
             'CustomSecAttributeAssignment.Read.All',
-            'CustomSecAttributeDefinition.Read.All'
+            'CustomSecAttributeDefinition.Read.All',
+            'BitlockerKey.ReadBasic.All',
+            'DeviceLocalCredential.ReadBasic.All'
         ),
         [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
         [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
@@ -54,11 +56,20 @@ function Connect-RKGraph {
         [Parameter(Mandatory = $true, ParameterSetName = 'AccessToken')]
         [SecureString] $AccessToken,
         [Parameter(Mandatory = $false)]
+        [switch] $SkipAutoRepair,
+        [Parameter(Mandatory = $false)]
         [switch] $DebugMode
     )
     $params = @{}
     foreach ($key in $PSBoundParameters.Keys) {
         $params[$key] = $PSBoundParameters[$key]
+    }
+    # Parameter defaults aren't included in $PSBoundParameters; without this, omitting
+    # -RequiredScopes would leave Connect-ToMgGraph to fall back to its own default
+    # (just 'User.Read'), causing cached sessions to be silently reused instead of
+    # reconnecting when this module's default scope list grows.
+    if (-not $params.ContainsKey('RequiredScopes')) {
+        $params['RequiredScopes'] = $RequiredScopes
     }
     $connected = Connect-ToMgGraph @params
     if ($connected) {

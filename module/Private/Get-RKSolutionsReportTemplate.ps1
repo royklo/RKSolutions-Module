@@ -662,6 +662,29 @@ input:checked + .rk-toggle-slider:before { transform: translateX(20px); }
 .dataTables_wrapper .dataTables_info,
 .dataTables_wrapper .dataTables_paginate { color: var(--text-body) !important; }
 
+/* External per-table search input lives inside each rk-filter-bar. Bootstrap's
+   .form-control provides the base contrast / border styling - we only nudge
+   the typography to match the rest of the filter row and push it to the left
+   so the dropdowns stay grouped on the right. */
+.rk-search-input.form-control {
+    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-size: 0.78rem;
+    margin-right: auto;
+}
+.rk-search-input.form-control:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18);
+}
+
+.rk-dt-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 0 0 0;
+}
+
 .dataTables_wrapper .dataTables_length select,
 .dataTables_wrapper .dataTables_filter input {
     border: 1px solid var(--input-border);
@@ -869,7 +892,11 @@ $CustomCss
 // DataTable helper
 function initRKTable(selector, extraOptions) {
     var defaults = {
-        dom: 'frtip',
+        // No 'f' here - the search input is injected manually into each panel's
+        // .rk-filter-bar by linkRKSearchInputs() so we don't have to fight DataTables
+        // + Bootstrap5 styling for the built-in filter element. 't'able, 'i'nfo,
+        // 'p'agination are still rendered by DataTables.
+        dom: 'rt<"rk-dt-footer"ip>',
         buttons: [
             {
                 extend: 'collection',
@@ -919,7 +946,23 @@ function initRKTable(selector, extraOptions) {
         }
     };
     if (extraOptions) { `$.extend(true, defaults, extraOptions); }
-    return `$(selector).DataTable(defaults);
+    var dt = `$(selector).DataTable(defaults);
+
+    // Inject a per-table search input into the containing panel's filter bar.
+    // We render this ourselves rather than relying on DataTables's built-in 'f'
+    // element because the latter loses contrast inside the dark card-body in
+    // some browsers and gets visually lost above the table.
+    var panel = `$(selector).closest('.rk-panel');
+    var filterBar = panel.find('.rk-filter-bar').first();
+    if (filterBar.length && !filterBar.find('.rk-search-input').length) {
+        // Use Bootstrap's form-control alongside our own class so the input picks up
+        // the same border/contrast styling as the existing .form-select dropdowns,
+        // which the rest of the report already relies on for visibility.
+        var search = `$('<input type="search" class="form-control rk-search-input" placeholder="Search records..." aria-label="Search" style="max-width:280px;">');
+        search.on('input', function() { dt.search(`$(this).val()).draw(); });
+        filterBar.prepend(search);
+    }
+    return dt;
 }
 </script>
 

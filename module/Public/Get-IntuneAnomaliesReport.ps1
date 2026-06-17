@@ -10,29 +10,60 @@ param(
     [Parameter(Mandatory = $false)] [string[]] $Recipient,
     [Parameter(Mandatory = $false)] [string] $From,
     [Parameter(Mandatory = $false)] [string] $ExportPath,
+    # Surface devices that were *deliberately* excluded from BitLocker / LAPS policies
+    # (via exclude group or assignment filter) as Info-severity rows. Off by default
+    # so the report stays focused on actual anomalies; intentional exclusions are
+    # admin choices, not gaps.
+    [Parameter(Mandatory = $false)] [switch] $ShowExcludedDevices,
     [Parameter(Mandatory = $false)] [switch] $DebugMode
 )
 
 $ErrorActionPreference = 'Stop'
 try {
+    $swReport = [System.Diagnostics.Stopwatch]::StartNew()
+    $swPhase  = [System.Diagnostics.Stopwatch]::new()
+
     $ctx = Get-MgContext -ErrorAction SilentlyContinue
     if (-not $ctx) { throw 'Not connected to Microsoft Graph. Run Connect-RKGraph first.' }
 
     $tenantInfo = Invoke-MgGraphRequest -Uri 'beta/organization' -Method Get -OutputType PSObject
     $tenantname = $tenantInfo.value[0].displayName
 
+    $swPhase.Restart()
     $AllEntraIDUsers = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/beta/users/?`$select=id,userPrincipalName,userType,accountEnabled" | Where-Object { $_.UserType -eq 'Member' }
     $DisabledEntraUsers = $AllEntraIDUsers | Where-Object { $_.accountEnabled -eq $false } | Select-Object id, userPrincipalName, userType, accountEnabled
+    $swPhase.Stop(); Write-Verbose ("[Report] Entra users fetch: {0:N2}s ({1} members)" -f $swPhase.Elapsed.TotalSeconds, $AllEntraIDUsers.Count)
 
     Write-Host 'Starting device data collection...' -ForegroundColor Yellow
+    $swPhase.Restart()
     $DeviceData = Get-AllDeviceData
+    $swPhase.Stop(); Write-Verbose ("[Report] Get-AllDeviceData: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
+
+    $swPhase.Restart()
     $AutopilotProfilesInformation = Get-AutopilotProfilesInformation
     $UserDrivenAutopilotProfiles = $AutopilotProfilesInformation | Where-Object { $_.outOfBoxExperienceSettings.deviceUsageType -eq 'SingleUser' }
+    $swPhase.Stop(); Write-Verbose ("[Report] Autopilot profiles: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
 
+    Write-Host 'Resolving BitLocker / Windows LAPS policy assignments and key escrow state...' -ForegroundColor Yellow
+    $swPhase.Restart()
+    $SecurityKeyContext = Get-BitLockerLapsAssignmentContext -DebugMode:$DebugMode
+    $swPhase.Stop(); Write-Verbose ("[Report] BitLocker/LAPS context: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
+
+    $swPhase.Restart()
+    $Report_BitLockerStatus    = Resolve-IntuneBitLockerAnomalies   -Devices $DeviceData -Context $SecurityKeyContext -TenantName $tenantname -ShowExcludedDevices:$ShowExcludedDevices
+    $Report_LapsStatus         = Resolve-IntuneLapsAnomalies        -Devices $DeviceData -Context $SecurityKeyContext -TenantName $tenantname -ShowExcludedDevices:$ShowExcludedDevices
+    $Report_DeprecatedSettings = Resolve-IntuneDeprecatedAnomalies  -Context $SecurityKeyContext -TenantName $tenantname
+    $swPhase.Stop(); Write-Verbose ("[Report] BitLocker + LAPS + Deprecated resolution: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
+
+    $swPhase.Restart()
     $Report_ApplicationFailureReport = Get-ApplicationFailures
+    $swPhase.Stop(); Write-Verbose ("[Report] Get-ApplicationFailures: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
     $Report_DevicesWithMultipleUsers = $DeviceData | Where-Object { $_.usersLoggedOnCount -gt 1 -and $_.EnrollmentProfile -in $UserDrivenAutopilotProfiles.displayName } | Select-Object Customer, DeviceName, PrimaryUser, EnrollmentProfile, usersLoggedOnCount, usersLoggedOnIds
     $Report_OperatingSystemEditionOverview = $DeviceData | Select-Object Customer, DeviceName, PrimaryUser, OperatingSystemEdition, OSFriendlyname
-    $Report_NotEncryptedDevices = $DeviceData | Where-Object { $_.Encrypted -eq $false } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
+    # Not Encrypted is now folded into the BitLocker tab - unencrypted devices
+    # show up there as 'Device not encrypted and no BitLocker policy assigned' or
+    # 'BitLocker policy assigned but device not encrypted' so we don't need a
+    # standalone tab anymore.
     $Report_DevicesWithoutAutopilotHash = $DeviceData | Where-Object { $_.DeviceHashUploaded -eq $false } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
     $Report_InactiveDevices = $DeviceData | Where-Object { $_.LastContact -lt (Get-Date).AddDays(-90) } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel, LastContact
     $Report_DisabledPrimaryUsers = $DeviceData | Where-Object { $_.PrimaryUser -in $DisabledEntraUsers.userPrincipalName } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
@@ -52,7 +83,10 @@ try {
         }
     }
 
-    New-IntuneAnomaliesHTMLReport -TenantName $tenantname -Report_ApplicationFailureReport $Report_ApplicationFailureReport -Report_DevicesWithMultipleUsers $Report_DevicesWithMultipleUsers -Report_NotEncryptedDevices $Report_NotEncryptedDevices -Report_DevicesWithoutAutopilotHash $Report_DevicesWithoutAutopilotHash -Report_InactiveDevices $Report_InactiveDevices -Report_NoncompliantDevices $Report_NoncompliantDevices -Report_OperatingSystemEditionOverview $Report_OperatingSystemEditionOverview -Report_DisabledPrimaryUsers $Report_DisabledPrimaryUsers -ExportPath $ExportPath
+    $swPhase.Restart()
+    New-IntuneAnomaliesHTMLReport -TenantName $tenantname -Report_ApplicationFailureReport $Report_ApplicationFailureReport -Report_DevicesWithMultipleUsers $Report_DevicesWithMultipleUsers -Report_DevicesWithoutAutopilotHash $Report_DevicesWithoutAutopilotHash -Report_InactiveDevices $Report_InactiveDevices -Report_NoncompliantDevices $Report_NoncompliantDevices -Report_OperatingSystemEditionOverview $Report_OperatingSystemEditionOverview -Report_DisabledPrimaryUsers $Report_DisabledPrimaryUsers -Report_BitLockerStatus $Report_BitLockerStatus -Report_LapsStatus $Report_LapsStatus -Report_DeprecatedSettings $Report_DeprecatedSettings -ExportPath $ExportPath
+    $swPhase.Stop(); Write-Verbose ("[Report] HTML build: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
+    $swReport.Stop(); Write-Verbose ("[Report] TOTAL Get-IntuneAnomaliesReport: {0:N2}s" -f $swReport.Elapsed.TotalSeconds)
 
     $emailSent = $false
     if ($SendEmail -and $Recipient) {

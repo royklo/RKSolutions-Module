@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Conventional Commits](https://www.conventionalcommits.org/) and this project adheres to [Semantic Versioning](https://semver.org/). Release notes for each version are also generated from git history by the automation pipeline using the same conventional types (feat, fix, docs, refactor, test, etc.).
 
+## [Unreleased]
+
+### Features
+
+- Intune Anomalies Report gains two new checks: **BitLocker key escrow** and **Windows LAPS backup**. Each check resolves Intune policy assignments end-to-end (Settings Catalog by `settingDefinitionId`, legacy `windows10EndpointProtectionConfiguration`, Endpoint Security intents) and honours include / exclude groups, All Users / All Devices targets, and assignment filters - so the report flags both "no policy applied" and "policy applied but no key / no backup in Entra".
+- A single bulk pass (`Get-BitLockerLapsAssignmentContext`) collects policies + assignments + filters + transitive group members + `informationProtection/bitlocker/recoveryKeys` + `directory/deviceLocalCredentials`; per-device evaluators (`Resolve-IntuneBitLockerAnomalies`, `Resolve-IntuneLapsAnomalies`) then emit severity-tagged anomaly rows.
+- Two new dashboard tiles, tabs, and DataTables panels in the Intune Anomalies HTML report.
+
+### Maintenance
+
+- Expose `AzureAdDeviceId` on the device records produced by `Get-AllDeviceData` (required to join managed devices with Entra recovery keys and LAPS local credentials).
+- Add `BitlockerKey.ReadBasic.All` and `DeviceLocalCredential.ReadBasic.All` to the default Connect-RKGraph scopes and to `docs/PERMISSIONS.md`. ReadBasic variants only - the report never reads recovery passwords or local admin passwords.
+
+---
+
 ## [1.1.0]
 
 ### Features
