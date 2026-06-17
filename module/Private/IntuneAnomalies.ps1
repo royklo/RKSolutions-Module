@@ -1780,7 +1780,8 @@ function Get-BitLockerLapsAssignmentContext {
         # Both LAPS deviceLocalCredentialInfo.id and bitlockerRecoveryKey.deviceId are
         # the Azure AD device id (= managedDevice.azureADDeviceId). Verified against
         # live Graph data. Both joins go through that single GUID.
-        LapsCredentialByDeviceId = @{}    # azureAdDeviceId -> LAPS credential record
+        LapsCredentialByDeviceId   = @{}  # azureAdDeviceId -> LAPS credential record
+        LapsCredentialByDeviceName = @{}  # lowercased deviceName -> LAPS credential record (fallback join)
         # Safety-net for device records that lack azureADDeviceId in Intune: lookup
         # the Entra device by displayName, recover its deviceId, retry the join.
         EntraDeviceIdByName      = @{}    # lowercased deviceName -> azureAdDeviceId
@@ -1998,6 +1999,9 @@ function Get-BitLockerLapsAssignmentContext {
                 foreach ($e in $resp.value) {
                     $lapsFetched++
                     if ($e.id) { $context.LapsCredentialByDeviceId[[string]$e.id] = $e }
+                    if ($e.deviceName) {
+                        $context.LapsCredentialByDeviceName[([string]$e.deviceName).ToLowerInvariant()] = $e
+                    }
                 }
             }
             $lapsUri = $resp.'@odata.nextLink'
@@ -2301,7 +2305,10 @@ function Resolve-IntuneLapsAnomalies {
         # have differs from the one Entra stored the LAPS entry against.
         $entry = $Context.LapsCredentialByDeviceId[$aadId]
         if (-not $entry -and $d.DeviceName) {
-            $entry = $Context.LapsCredentialByDeviceId.Values | Where-Object { $_.deviceName -eq $d.DeviceName } | Select-Object -First 1
+            $nameKey = ([string]$d.DeviceName).ToLowerInvariant()
+            if ($Context.LapsCredentialByDeviceName.ContainsKey($nameKey)) {
+                $entry = $Context.LapsCredentialByDeviceName[$nameKey]
+            }
         }
 
         $status = $null; $severity = $null
