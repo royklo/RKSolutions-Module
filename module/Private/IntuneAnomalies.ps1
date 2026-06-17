@@ -1960,26 +1960,59 @@ function Get-BitLockerLapsAssignmentContext {
         }
     }
     Write-Host "  Resolving transitive members for $($referencedGroupIds.Count) group(s) used by BitLocker/LAPS assignments..." -ForegroundColor Cyan
+    # Initialise empty sets up front so every referenced group has entries even if a fetch fails.
     foreach ($gid in $referencedGroupIds) {
-        $deviceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        $userUpnSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        $userIdSet  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        try {
-            $devMembers = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/v1.0/groups/$gid/transitiveMembers/microsoft.graph.device?`$select=id,deviceId"
-            foreach ($m in $devMembers) { if ($m.deviceId) { [void]$deviceSet.Add([string]$m.deviceId) } }
+        $context.GroupDeviceAadIds[$gid] = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $context.GroupUserUpns[$gid]     = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $context.GroupUserIds[$gid]      = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    }
+    if ($referencedGroupIds.Count -gt 0) {
+        $memberRequests = [System.Collections.Generic.List[object]]::new()
+        foreach ($gid in $referencedGroupIds) {
+            $memberRequests.Add([PSCustomObject]@{
+                    Id  = "gd:$gid"
+                    Url = "/groups/$gid/transitiveMembers/microsoft.graph.device?`$select=id,deviceId"
+                })
+            $memberRequests.Add([PSCustomObject]@{
+                    Id  = "gu:$gid"
+                    Url = "/groups/$gid/transitiveMembers/microsoft.graph.user?`$select=id,userPrincipalName"
+                })
         }
-        catch { Write-Verbose "Group $gid device-member fetch failed: $($_.Exception.Message)" }
-        try {
-            $userMembers = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/v1.0/groups/$gid/transitiveMembers/microsoft.graph.user?`$select=id,userPrincipalName"
-            foreach ($m in $userMembers) {
-                if ($m.id) { [void]$userIdSet.Add([string]$m.id) }
-                if ($m.userPrincipalName) { [void]$userUpnSet.Add(([string]$m.userPrincipalName).ToLowerInvariant()) }
+        # transitiveMembers lives on v1.0; route the batch there to keep sub-request URLs consistent.
+        $memberResponses = Invoke-RKGraphBatch -Requests @($memberRequests) -GraphVersion 'v1.0' -Activity 'Group transitive members'
+        # Any sub-response carrying @odata.nextLink overflows the first page (999 members).
+        # Fall back to sequential paging for those groups only — rare in practice.
+        $nextLinkFollowups = [System.Collections.Generic.List[object]]::new()
+        foreach ($resp in $memberResponses) {
+            if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
+            $isUser = $resp.Id.StartsWith('gu:')
+            $gid    = $resp.Id.Substring(3)
+            foreach ($m in @($resp.Body.value)) {
+                if ($isUser) {
+                    if ($m.id)                { [void]$context.GroupUserIds[$gid].Add([string]$m.id) }
+                    if ($m.userPrincipalName) { [void]$context.GroupUserUpns[$gid].Add(([string]$m.userPrincipalName).ToLowerInvariant()) }
+                } else {
+                    if ($m.deviceId) { [void]$context.GroupDeviceAadIds[$gid].Add([string]$m.deviceId) }
+                }
+            }
+            if ($resp.Body.'@odata.nextLink') {
+                $nextLinkFollowups.Add([PSCustomObject]@{ Gid = $gid; IsUser = $isUser; NextUri = [string]$resp.Body.'@odata.nextLink' })
             }
         }
-        catch { Write-Verbose "Group $gid user-member fetch failed: $($_.Exception.Message)" }
-        $context.GroupDeviceAadIds[$gid] = $deviceSet
-        $context.GroupUserUpns[$gid]     = $userUpnSet
-        $context.GroupUserIds[$gid]      = $userIdSet
+        foreach ($f in $nextLinkFollowups) {
+            try {
+                $rest = Invoke-GraphRequestWithPaging -Uri $f.NextUri
+                foreach ($m in $rest) {
+                    if ($f.IsUser) {
+                        if ($m.id)                { [void]$context.GroupUserIds[$f.Gid].Add([string]$m.id) }
+                        if ($m.userPrincipalName) { [void]$context.GroupUserUpns[$f.Gid].Add(([string]$m.userPrincipalName).ToLowerInvariant()) }
+                    } else {
+                        if ($m.deviceId) { [void]$context.GroupDeviceAadIds[$f.Gid].Add([string]$m.deviceId) }
+                    }
+                }
+            }
+            catch { Write-Verbose "Group $($f.Gid) nextLink follow-up failed: $($_.Exception.Message)" }
+        }
     }
 
     # 6. BitLocker recovery keys. OS-volume key (volumeType == 1) is what protects the system drive.
