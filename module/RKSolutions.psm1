@@ -28,7 +28,6 @@ if (Test-Path $privatePath) {
         'Install-Requirements.ps1',
         'Export-Results.ps1',
         'Connect-ToMgGraph.ps1',
-        'Invoke-RKSolutionsWithConnection.ps1',
         'Invoke-GraphRequestWithPaging.ps1',
         'Invoke-RKGraphBatch.ps1',
         'Send-EmailWithAttachment.ps1',
