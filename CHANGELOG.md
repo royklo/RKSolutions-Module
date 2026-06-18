@@ -6,6 +6,22 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 
 
+## [1.2.1] - 2026-06-18
+
+Patch release - fixes a perf regression and a missing-data symptom in the Intune Anomalies report's compliance fetch, plus a layout fix that affects every report.
+
+### Fixes
+
+- **Noncompliant Reason column now shows the actual rule name.** On tenants where Microsoft Graph returned a `deviceCompliancePolicyStates` record more than once for the same device (which happens when a single policy resolves via more than one assignment path), the rule-detail fetch silently failed and the Reason column fell back to "Unknown". `Get-IntuneAnomaliesReport` now dedupes those records before fetching, so the real rule name shows up (e.g. `Windows10CompliancePolicy.SignatureOutOfDate`).
+- **Report no longer hangs ~60s on tenants with noncompliant devices.** When the rule-detail fetch failed, the Microsoft Graph `$batch` retry loop sat on a permanent 400 with exponential backoff. The retry path now fast-fails non-transient HTTP errors and logs Graph's actual error body so future regressions are easier to spot. End-to-end report runtime on the reproduction tenant dropped from ~70s to ~10s.
+- **Rule-detail fetch has a per-request fallback.** If the batch path ever fails again (for any reason), the report retries each rejected sub-request individually instead of returning empty data. Slower but correct.
+
+### Polish
+
+- **Long values no longer overflow table cells.** UPNs, long device names, and other unbreakable strings now wrap inside their column instead of bleeding into the neighbouring column. Shared report template fix - applies to every report, not just the Intune Anomalies one.
+
+---
+
 ## [1.2.0] - 2026-06-17
 
 Adds BitLocker, Windows LAPS, and deprecated-settings detection to `Get-IntuneAnomaliesReport`, and significantly speeds the report up via Graph `$batch`.
