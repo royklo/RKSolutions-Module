@@ -1443,20 +1443,25 @@ function Get-AllDeviceData {
         # Graph occasionally returns the same policy-state id twice for a single device (e.g. when the
         # same policy resolves via more than one assignment path). Adding both would produce duplicate
         # sub-request ids in the batch, which Graph rejects with 400 "Request Id ... has to be unique
-        # in a batch." Dedupe per (deviceId, stateId) at the build site.
+        # in a batch." Dedupe the state list per device by id BEFORE the <=10 guard so duplicates
+        # don't accidentally push a device past the cap and silently drop its compliance details.
         $settingStatePairs = [System.Collections.Generic.List[object]]::new()
-        $seenPairIds = [System.Collections.Generic.HashSet[string]]::new()
         foreach ($resp in $policyStateResponses) {
             if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
             $deviceId = $resp.Id -replace '^ps:', ''
-            $states = @($resp.Body.value | Where-Object { $_.State -eq 'nonCompliant' -or $_.State -eq 'Error' })
+            $rawStates = @($resp.Body.value | Where-Object { $_.State -eq 'nonCompliant' -or $_.State -eq 'Error' })
+
+            $seenStateIds = [System.Collections.Generic.HashSet[string]]::new()
+            $states = [System.Collections.Generic.List[object]]::new()
+            foreach ($s in $rawStates) {
+                if ($seenStateIds.Add($s.id)) { $states.Add($s) }
+            }
+
             if ($states.Count -eq 0 -or $states.Count -gt 10) { continue }
             $ComplianceRulesByDevice[$deviceId] = [System.Collections.Generic.List[string]]::new()
             foreach ($s in $states) {
-                $pairId = "ss:$deviceId|$($s.id)"
-                if (-not $seenPairIds.Add($pairId)) { continue }
                 $settingStatePairs.Add([PSCustomObject]@{
-                        Id  = $pairId
+                        Id  = "ss:$deviceId|$($s.id)"
                         Url = "/deviceManagement/managedDevices/$deviceId/deviceCompliancePolicyStates/$($s.id)/settingStates"
                     })
             }
