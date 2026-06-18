@@ -563,6 +563,8 @@ table.dataTable, .table {
     background-color: inherit !important;
     font-family: 'Geist', -apple-system, sans-serif;
     transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+    word-break: break-word;
+    overflow-wrap: break-word;
 }
 .table tbody td.rk-mono {
     font-family: 'Geist Mono', ui-monospace, monospace;

@@ -91,11 +91,32 @@ function Invoke-RKGraphBatch {
             try {
                 $response = Invoke-MgGraphRequest -Method POST -Uri $batchUri -Body $payload -ContentType 'application/json' -OutputType PSObject -ErrorAction Stop
             } catch {
+                # Inspect HTTP status. 4xx (except 408 / 429) is permanent: retrying wastes
+                # time. Only 408, 429, 5xx, and unknown (network / parse error) are retried.
+                $statusCode = 0
+                if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                    $statusCode = [int]$_.Exception.Response.StatusCode
+                }
+                $errorBody = $null
+                if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $errorBody = $_.ErrorDetails.Message }
+
+                $isTransient = ($statusCode -eq 0 -or $statusCode -eq 408 -or $statusCode -eq 429 -or ($statusCode -ge 500 -and $statusCode -lt 600))
+
+                if (-not $isTransient) {
+                    Write-Verbose "Invoke-RKGraphBatch: batch POST failed with non-transient HTTP $statusCode (not retried): $($_.Exception.Message)"
+                    if ($errorBody) { Write-Verbose "Invoke-RKGraphBatch: response body: $errorBody" }
+                    foreach ($p in $pending) {
+                        $allResponses.Add([PSCustomObject]@{ Id = $p.id; Status = $statusCode; Body = $null; Headers = $null; Error = $_.Exception.Message })
+                    }
+                    break
+                }
+
                 $attempt++
                 if ($attempt -gt $MaxRetries) {
-                    Write-Verbose "Invoke-RKGraphBatch: batch POST failed after $MaxRetries retries: $($_.Exception.Message)"
+                    Write-Verbose "Invoke-RKGraphBatch: batch POST failed after $MaxRetries retries (HTTP $statusCode): $($_.Exception.Message)"
+                    if ($errorBody) { Write-Verbose "Invoke-RKGraphBatch: response body: $errorBody" }
                     foreach ($p in $pending) {
-                        $allResponses.Add([PSCustomObject]@{ Id = $p.id; Status = 0; Body = $null; Headers = $null; Error = $_.Exception.Message })
+                        $allResponses.Add([PSCustomObject]@{ Id = $p.id; Status = $statusCode; Body = $null; Headers = $null; Error = $_.Exception.Message })
                     }
                     break
                 }

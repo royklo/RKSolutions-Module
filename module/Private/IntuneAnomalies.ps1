@@ -1439,12 +1439,24 @@ function Get-AllDeviceData {
         $swStep.Stop()
         Write-Verbose ("[Get-AllDeviceData] Compliance policy-states batch: {0:N2}s ({1} devices, {2} responses)" -f $swStep.Elapsed.TotalSeconds, $NonCompliantDevices.Count, $policyStateResponses.Count)
 
-        # Map deviceId -> array of nonCompliant/Error policy state ids (preserving the existing <=10 guard)
+        # Map deviceId -> array of nonCompliant/Error policy state ids (preserving the existing <=10 guard).
+        # Graph occasionally returns the same policy-state id twice for a single device (e.g. when the
+        # same policy resolves via more than one assignment path). Adding both would produce duplicate
+        # sub-request ids in the batch, which Graph rejects with 400 "Request Id ... has to be unique
+        # in a batch." Dedupe the state list per device by id BEFORE the <=10 guard so duplicates
+        # don't accidentally push a device past the cap and silently drop its compliance details.
         $settingStatePairs = [System.Collections.Generic.List[object]]::new()
         foreach ($resp in $policyStateResponses) {
             if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
             $deviceId = $resp.Id -replace '^ps:', ''
-            $states = @($resp.Body.value | Where-Object { $_.State -eq 'nonCompliant' -or $_.State -eq 'Error' })
+            $rawStates = @($resp.Body.value | Where-Object { $_.State -eq 'nonCompliant' -or $_.State -eq 'Error' })
+
+            $seenStateIds = [System.Collections.Generic.HashSet[string]]::new()
+            $states = [System.Collections.Generic.List[object]]::new()
+            foreach ($s in $rawStates) {
+                if ($seenStateIds.Add($s.id)) { $states.Add($s) }
+            }
+
             if ($states.Count -eq 0 -or $states.Count -gt 10) { continue }
             $ComplianceRulesByDevice[$deviceId] = [System.Collections.Generic.List[string]]::new()
             foreach ($s in $states) {
@@ -1460,14 +1472,44 @@ function Get-AllDeviceData {
             $settingResponses = Invoke-RKGraphBatch -Requests @($settingStatePairs) -Activity "Compliance setting states"
             $swStep.Stop()
             Write-Verbose ("[Get-AllDeviceData] Compliance setting-states batch: {0:N2}s ({1} pairs)" -f $swStep.Elapsed.TotalSeconds, $settingStatePairs.Count)
+
+            $failedPairs = [System.Collections.Generic.List[object]]::new()
+            $pairIndex = @{}
+            foreach ($p in $settingStatePairs) { $pairIndex[$p.Id] = $p }
+
             foreach ($resp in $settingResponses) {
-                if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
+                if ($resp.Status -ne 200 -or -not $resp.Body) {
+                    if ($pairIndex.ContainsKey($resp.Id)) { $failedPairs.Add($pairIndex[$resp.Id]) }
+                    continue
+                }
                 $deviceId = ($resp.Id -replace '^ss:', '') -split '\|' | Select-Object -First 1
                 if (-not $ComplianceRulesByDevice.ContainsKey($deviceId)) { continue }
                 $details = @($resp.Body.value | Where-Object { $_.state -match 'nonCompliant' })
                 foreach ($det in $details) {
                     if ($det.setting) { $ComplianceRulesByDevice[$deviceId].Add($det.setting) }
                 }
+            }
+
+            # Fallback: sub-requests that didn't return 200 from $batch get retried as
+            # per-request GETs. Graph's $batch endpoint occasionally rejects this
+            # setting-states sub-route with 400 even though the individual GET works.
+            if ($failedPairs.Count -gt 0) {
+                $swStep.Restart()
+                foreach ($pair in $failedPairs) {
+                    $deviceId = ($pair.Id -replace '^ss:', '') -split '\|' | Select-Object -First 1
+                    if (-not $ComplianceRulesByDevice.ContainsKey($deviceId)) { continue }
+                    try {
+                        $direct = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta$($pair.Url)" -ErrorAction Stop
+                        $details = @($direct.value | Where-Object { $_.state -match 'nonCompliant' })
+                        foreach ($det in $details) {
+                            if ($det.setting) { $ComplianceRulesByDevice[$deviceId].Add($det.setting) }
+                        }
+                    } catch {
+                        Write-Verbose "Compliance setting-states fallback: per-request GET failed for $($pair.Id): $($_.Exception.Message)"
+                    }
+                }
+                $swStep.Stop()
+                Write-Verbose ("[Get-AllDeviceData] Compliance setting-states fallback: {0:N2}s ({1} pairs retried individually)" -f $swStep.Elapsed.TotalSeconds, $failedPairs.Count)
             }
         }
     }
