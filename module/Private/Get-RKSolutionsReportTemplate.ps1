@@ -459,6 +459,21 @@ input:checked + .rk-theme-toggle-slider:before { transform: translateX(18px); }
 [data-theme="dark"] .rk-stat-tile.t-pink .rk-stat-eyebrow { color: var(--tile-pink-eyebrow); opacity: 1; }
 [data-theme="dark"] .rk-stat-tile.t-pink .rk-stat-caption { color: var(--tile-pink-caption); opacity: 1; }
 
+/* --- Tab intro (what this tab checks) --- */
+.rk-tab-intro {
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 18px;
+    margin-bottom: 16px;
+    font-family: 'Geist', -apple-system, sans-serif;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-body);
+}
+.rk-tab-intro strong { color: var(--text); }
+
 /* --- Filter Bar --- */
 .rk-filter-bar {
     background: var(--bg-elevated);

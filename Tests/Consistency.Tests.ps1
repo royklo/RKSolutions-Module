@@ -148,6 +148,25 @@ Describe 'Public report cmdlet shape contracts' {
     }
 }
 
+Describe 'Compliance setting friendly names' {
+    BeforeAll {
+        Remove-Module -Name 'RKSolutions' -ErrorAction SilentlyContinue
+        Import-Module (Get-RKSolutionsManifestPath) -Force
+    }
+
+    It 'No friendly name contains ", " (the Noncompliant tab splits reasons on it)' {
+        $bad = InModuleScope RKSolutions { $script:ComplianceSettingFriendlyNames.Values | Where-Object { $_ -like '*, *' } }
+        $bad | Should -BeNullOrEmpty
+    }
+
+    It 'Translates known rules and passes unknown ones through' {
+        InModuleScope RKSolutions {
+            ConvertTo-ComplianceSettingFriendlyName 'Windows10CompliancePolicy.BitLockerEnabled' | Should -Be 'Require BitLocker'
+            ConvertTo-ComplianceSettingFriendlyName './Vendor/MSFT/Custom/Thing' | Should -Be './Vendor/MSFT/Custom/Thing'
+        }
+    }
+}
+
 Describe 'BitLocker / LAPS anomaly resolver output contracts' {
     # The HTML template emits <td> cells for each property in a specific order;
     # if these resolvers ever stop emitting one of these columns, the rendered
