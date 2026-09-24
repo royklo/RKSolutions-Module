@@ -54,7 +54,7 @@ Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection
 
 ## Get-IntuneAnomaliesReport
 
-Generates an interactive HTML report covering Intune app failures, multi-user devices, missing Autopilot hashes, inactive devices, non-compliant devices, disabled primary users, BitLocker key escrow, Windows LAPS backup, and deprecated Settings Catalog settings.
+Generates an interactive HTML report covering Intune app failures, multi-user devices, devices not registered for Autopilot, inactive devices, non-compliant devices, disabled primary users, BitLocker key escrow, Windows LAPS backup, and deprecated Settings Catalog settings.
 
 
 | Parameter               | Description                                                                                                                                                |

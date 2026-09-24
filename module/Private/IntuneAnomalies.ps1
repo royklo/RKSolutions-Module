@@ -81,7 +81,7 @@ function New-IntuneAnomaliesHTMLReport {
 "@
     }
 
-    # Generate table rows for Non-company owned devices
+    # Generate table rows for devices not registered for Autopilot
     $noAutopilotHashRows = ""
     foreach ($item in $Report_DevicesWithoutAutopilotHash) {
         $noAutopilotHashRows += @"
@@ -230,9 +230,9 @@ function New-IntuneAnomaliesHTMLReport {
                 <div class="rk-stat-caption">Non-shared devices</div>
             </div>
             <div class="rk-stat-tile t-rose">
-                <div class="rk-stat-eyebrow">NO AUTOPILOT HASH</div>
+                <div class="rk-stat-eyebrow">NOT IN AUTOPILOT</div>
                 <div class="rk-stat-number">$Report_DevicesWithoutAutopilotHash_Count</div>
-                <div class="rk-stat-caption">Missing hardware hash</div>
+                <div class="rk-stat-caption">No hash or corporate identifier</div>
             </div>
             <div class="rk-stat-tile t-amber">
                 <div class="rk-stat-eyebrow">INACTIVE DEVICES</div>
@@ -277,7 +277,7 @@ function New-IntuneAnomaliesHTMLReport {
     <div class="rk-tabs">
         <button class="rk-tab active" data-target="panel-app-failures">Application Failures</button>
         <button class="rk-tab" data-target="panel-multiple-users">Multiple Users</button>
-        <button class="rk-tab" data-target="panel-no-autopilot">No Autopilot Hash</button>
+        <button class="rk-tab" data-target="panel-no-autopilot">Not in Autopilot</button>
         <button class="rk-tab" data-target="panel-inactive-devices">Inactive Devices</button>
         <button class="rk-tab" data-target="panel-noncompliant">Noncompliant</button>
         <button class="rk-tab" data-target="panel-os-edition">OS Edition Overview</button>
@@ -289,6 +289,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Application Failures Panel -->
     <div id="panel-app-failures" class="rk-panel active">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Windows apps in Intune with at least one failed installation, taken from the Intune app install status report and sorted by number of failed devices.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="appFailuresCustomerFilter" class="form-select" style="max-width:180px;">
@@ -346,6 +347,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Multiple Users Panel -->
     <div id="panel-multiple-users" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Devices enrolled with a user-driven (single-user) Autopilot profile where more than one user has signed in. These devices are meant for one person. Multiple users usually means the device was handed over without a reset, or that it is really used as a shared device, in which case a shared-device (self-deploying) enrollment is a better fit.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="multipleUsersCustomerFilter" class="form-select" style="max-width:180px;">
@@ -399,8 +401,9 @@ function New-IntuneAnomaliesHTMLReport {
         </div>
     </div>
 
-    <!-- No Autopilot Hash Panel -->
+    <!-- Not in Autopilot Panel -->
     <div id="panel-no-autopilot" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Windows devices that are not registered for Autopilot at all: no hardware hash (Autopilot) and no corporate identifier (Autopilot device preparation). Cloud PCs and Dev Boxes are left out.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="noAutopilotCustomerFilter" class="form-select" style="max-width:180px;">
@@ -422,7 +425,7 @@ function New-IntuneAnomaliesHTMLReport {
         </div>
         <div class="rk-card">
             <div class="rk-card-header">
-                <span>Non-company owned devices</span>
+                <span>Devices not registered for Autopilot</span>
                 <div class="rk-show-all">
                     <label class="rk-toggle-switch">
                         <input type="checkbox" id="noAutopilotShowAllToggle">
@@ -453,6 +456,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Inactive Devices Panel -->
     <div id="panel-inactive-devices" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Devices that have not synced with Intune in the last 90 days.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="inactiveCustomerFilter" class="form-select" style="max-width:180px;">
@@ -511,6 +515,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Noncompliant Devices Panel -->
     <div id="panel-noncompliant" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Devices that Intune marks as noncompliant, with one row per compliance rule that failed. The Noncompliant Alert column leaves out the <em>device has not checked in</em> and <em>no compliance policy assigned</em> rules.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="noncompliantCustomerFilter" class="form-select" style="max-width:180px;">
@@ -569,6 +574,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- OS Edition Overview Panel -->
     <div id="panel-os-edition" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Overview of every Windows device with its OS edition and Windows version. Use it to spot unexpected editions: a device running Pro where you expect Enterprise cannot use Enterprise-only features such as Credential Guard, so policies that rely on them silently do nothing.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="osEditionCustomerFilter" class="form-select" style="max-width:180px;">
@@ -620,6 +626,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Disabled Primary Users Panel -->
     <div id="panel-disabled-users" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Devices whose primary user has a disabled account in Entra ID.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="disabledUsersCustomerFilter" class="form-select" style="max-width:180px;">
@@ -672,6 +679,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- BitLocker Panel -->
     <div id="panel-bitlocker-status" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Windows devices that are not encrypted, have no BitLocker policy assigned, or are encrypted without an OS-volume recovery key stored in Entra ID. Cloud PCs and Dev Boxes are left out. Devices deliberately excluded from BitLocker policies are hidden unless the report runs with <code>-ShowExcludedDevices</code>.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="bitLockerCustomerFilter" class="form-select" style="max-width:180px;">
@@ -727,6 +735,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Windows LAPS Panel -->
     <div id="panel-laps-status" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Windows devices without an Entra-backed Windows LAPS policy, with a LAPS policy but no password backed up to Entra ID, or with a backup older than 60 days. Devices deliberately excluded from LAPS policies are hidden unless the report runs with <code>-ShowExcludedDevices</code>.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="lapsCustomerFilter" class="form-select" style="max-width:180px;">
@@ -783,6 +792,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Deprecated Settings Panel -->
     <div id="panel-deprecated-settings" class="rk-panel">
+        <div class="rk-tab-intro"><strong>What we check:</strong> Settings in your Settings Catalog policies that Microsoft has marked as deprecated. These may stop working or be removed in a future Intune release.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="deprecatedPlatformFilter" class="form-select" style="max-width:180px;">
@@ -1285,6 +1295,55 @@ function New-IntuneAnomaliesHTMLReport {
 }
 
 
+# Admin-center names for compliance rules, keyed by the settingName suffix Graph returns.
+# Sources: learn.microsoft.com/intune/device-security/compliance/ref-windows-settings
+#          learn.microsoft.com/intune/device-security/compliance/monitor-policy (built-in policy)
+# Names must not contain ', ' - the Noncompliant tab splits reasons on it.
+$script:ComplianceSettingFriendlyNames = @{
+    'RequireRemainContact'                        = 'Is active (no compliance check-in within the compliance status validity period)'
+    'RequireDeviceCompliancePolicyAssigned'       = 'Has a compliance policy assigned'
+    'RequireUserExistence'                        = 'Enrolled user exists (user deleted or disabled or without an Intune license)'
+    'BitLockerEnabled'                            = 'Require BitLocker'
+    'SecureBootEnabled'                           = 'Require Secure Boot to be enabled on the device'
+    'CodeIntegrityEnabled'                        = 'Require code integrity'
+    'EarlyLaunchAntiMalwareDriverEnabled'         = 'Early launch antimalware driver enabled'
+    'RequireHealthyDeviceReport'                  = 'Reported healthy by Device Health Attestation'
+    'OsMinimumVersion'                            = 'Minimum OS version'
+    'OsMaximumVersion'                            = 'Maximum OS version'
+    'MobileOsMinimumVersion'                      = 'Minimum OS required for mobile devices'
+    'MobileOsMaximumVersion'                      = 'Maximum OS required for mobile devices'
+    'ValidOperatingSystemBuildRanges'             = 'Valid operating system builds'
+    'ConfigurationManagerComplianceRequired'      = 'Require device compliance from Configuration Manager'
+    'PasswordRequired'                            = 'Require a password to unlock mobile devices'
+    'PasswordBlockSimple'                         = 'Simple passwords'
+    'PasswordRequiredType'                        = 'Password type'
+    'PasswordMinimumCharacterSetCount'            = 'Password complexity'
+    'PasswordMinimumLength'                       = 'Minimum password length'
+    'PasswordMinutesOfInactivityBeforeLock'       = 'Maximum minutes of inactivity before password is required'
+    'PasswordExpirationDays'                      = 'Password expiration (days)'
+    'PasswordPreviousPasswordBlockCount'          = 'Number of previous passwords to prevent reuse'
+    'PasswordRequiredToUnlockFromIdle'            = 'Require password when device returns from idle state'
+    'StorageRequireEncryption'                    = 'Encryption of data storage on a device'
+    'ActiveFirewallRequired'                      = 'Firewall (turned off or allowing all inbound traffic)'
+    'TpmRequired'                                 = 'Trusted Platform Module (TPM)'
+    'AntivirusRequired'                           = 'Antivirus (turned off or out of date in Windows Security)'
+    'AntiSpywareRequired'                         = 'Antispyware (turned off or out of date in Windows Security)'
+    'DefenderEnabled'                             = 'Microsoft Defender Antimalware (service turned off)'
+    'DefenderVersion'                             = 'Microsoft Defender Antimalware minimum version'
+    'SignatureOutOfDate'                          = 'Microsoft Defender Antimalware security intelligence up-to-date'
+    'RtpEnabled'                                  = 'Real-time protection (turned off)'
+    'DeviceThreatProtectionEnabled'               = 'Require the device to be at or under the machine risk score'
+    'DeviceThreatProtectionRequiredSecurityLevel' = 'Require the device to be at or under the machine risk score'
+}
+
+function ConvertTo-ComplianceSettingFriendlyName {
+    param([string] $SettingName)
+    if ($SettingName -match '^(Windows10CompliancePolicy|DefaultDeviceCompliancePolicy)\.(.+)$' -and $script:ComplianceSettingFriendlyNames.ContainsKey($Matches[2])) {
+        return $script:ComplianceSettingFriendlyNames[$Matches[2]]
+    }
+    return $SettingName
+}
+
 function Get-AllDeviceData {
     function Get-OperatingSystemProductType {
         param (
@@ -1400,6 +1459,19 @@ function Get-AllDeviceData {
     $swStep.Stop()
     Write-Verbose ("[Get-AllDeviceData] Managed devices fetch: {0:N2}s ({1} devices)" -f $swStep.Elapsed.TotalSeconds, $AllDeviceData.Count)
 
+    # The list endpoint always reports deviceType 'windowsRT'; only a per-device GET returns 'cloudPC'
+    # (Windows 365 and Dev Box). A failed lookup counts as a physical device so nothing is hidden by mistake.
+    $swStep.Restart()
+    $CloudPcIds = [System.Collections.Generic.HashSet[string]]::new()
+    $deviceTypeRequests = foreach ($d in $AllDeviceData) {
+        [PSCustomObject]@{ Id = "dt:$($d.id)"; Url = "/deviceManagement/managedDevices/$($d.id)?`$select=id,deviceType" }
+    }
+    foreach ($resp in (Invoke-RKGraphBatch -Requests @($deviceTypeRequests) -Activity 'Device types')) {
+        if ($resp.Status -eq 200 -and $resp.Body.deviceType -eq 'cloudPC') { [void]$CloudPcIds.Add(($resp.Id -replace '^dt:', '')) }
+    }
+    $swStep.Stop()
+    Write-Verbose ("[Get-AllDeviceData] Device type lookup: {0:N2}s ({1} Cloud PCs)" -f $swStep.Elapsed.TotalSeconds, $CloudPcIds.Count)
+
     # Get all AutoPilot registered devices under "Enrollment"
     Write-Host "Fetching Autopilot devices..." -ForegroundColor Yellow
     $swStep.Restart()
@@ -1411,6 +1483,14 @@ function Get-AllDeviceData {
     $AutopilotLookup = @{}
     foreach ($ap in $AutopilotDevices) {
         if ($ap.serialNumber) { $AutopilotLookup[$ap.serialNumber] = $ap }
+    }
+
+    # Autopilot device preparation (v2) associates devices via corporate identifiers
+    # ("Manufacturer,Model,Serial" or a bare serial) instead of a hardware hash.
+    $CorporateIdentifierSerials = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $CorporateIdentifiers = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/beta/deviceManagement/importedDeviceIdentities"
+    foreach ($ci in $CorporateIdentifiers) {
+        if ($ci.importedDeviceIdentifier) { [void]$CorporateIdentifierSerials.Add(($ci.importedDeviceIdentifier -split ',')[-1].Trim()) }
     }
 
     # Pre-build user lookup hashtable (id -> UPN) for O(1) lookups
@@ -1425,6 +1505,12 @@ function Get-AllDeviceData {
     $ComplianceRulesByDevice = @{}
     $NonCompliantDevices = $AllDeviceData | Where-Object { $_.complianceState -eq 'noncompliant' }
     if ($NonCompliantDevices -and $NonCompliantDevices.Count -gt 0) {
+        try {
+            $checkinDays = (Invoke-MgGraphRequest -Uri 'https://graph.microsoft.com/beta/deviceManagement/settings' -OutputType PSObject -ErrorAction Stop).deviceComplianceCheckinThresholdDays
+            if ($checkinDays) { $script:ComplianceSettingFriendlyNames['RequireRemainContact'] = "Is active (no compliance check-in in the last $checkinDays days)" }
+        } catch {
+            Write-Verbose "Compliance validity period lookup failed: $($_.Exception.Message)"
+        }
         Write-Host "Fetching compliance details for $($NonCompliantDevices.Count) noncompliant devices..." -ForegroundColor Yellow
 
         $policyStateRequests = foreach ($d in $NonCompliantDevices) {
@@ -1486,7 +1572,9 @@ function Get-AllDeviceData {
                 if (-not $ComplianceRulesByDevice.ContainsKey($deviceId)) { continue }
                 $details = @($resp.Body.value | Where-Object { $_.state -match 'nonCompliant' })
                 foreach ($det in $details) {
-                    if ($det.setting) { $ComplianceRulesByDevice[$deviceId].Add($det.setting) }
+                    # settingName (e.g. Windows10CompliancePolicy.RtpEnabled) is always set and maps to a friendly name; `setting` is empty for Default Device Compliance Policy rows.
+                    $rule = if ($det.settingName) { $det.settingName } else { $det.setting }
+                    if ($rule) { $ComplianceRulesByDevice[$deviceId].Add($rule) }
                 }
             }
 
@@ -1502,7 +1590,8 @@ function Get-AllDeviceData {
                         $direct = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta$($pair.Url)" -ErrorAction Stop
                         $details = @($direct.value | Where-Object { $_.state -match 'nonCompliant' })
                         foreach ($det in $details) {
-                            if ($det.setting) { $ComplianceRulesByDevice[$deviceId].Add($det.setting) }
+                            $rule = if ($det.settingName) { $det.settingName } else { $det.setting }
+                            if ($rule) { $ComplianceRulesByDevice[$deviceId].Add($rule) }
                         }
                     } catch {
                         Write-Verbose "Compliance setting-states fallback: per-request GET failed for $($pair.Id): $($_.Exception.Message)"
@@ -1602,6 +1691,8 @@ function Get-AllDeviceData {
                 EnrolledDate               = $DeviceProperties.EnrolledDateTime
                 LastContact                = $DeviceProperties.LastSyncDateTime
                 DeviceHashUploaded         = $HashUploaded
+                DeviceAssociated           = [bool]($DeviceData.SerialNumber -and $CorporateIdentifierSerials.Contains($DeviceData.SerialNumber))
+                IsCloudPC                  = $CloudPcIds.Contains([string]$DeviceData.id)
                 AutopilotGroupTag          = $AutopilotInfo.groupTag
                 AutopilotAssignedUser      = if ($AutopilotInfo.userprincipalname) { $AutopilotInfo.userprincipalname } else { $null }
                 EnrollmentProfile          = $DeviceProperties.EnrollmentProfileName
@@ -1618,8 +1709,8 @@ function Get-AllDeviceData {
                 BiosVersion                = if ($hardwareInfo.systemManagementBIOSVersion) { $hardwareInfo.systemManagementBIOSVersion } else { "Unknown" }
                 ComplianceStatus           = $DeviceProperties.ComplianceState
                 # **FIX**: Use unique rules to prevent duplicates
-                NoncompliantBasedOn        = if ($uniqueRules) { $uniqueRules -join ', ' } else { "" }
-                NoncompliantAlert          = if ($uniqueRules) { ($uniqueRules | Where-Object { $_ -notin $FilteredForAlerting }) -join ', ' } else { "" }
+                NoncompliantBasedOn        = (@($uniqueRules | ForEach-Object { ConvertTo-ComplianceSettingFriendlyName $_ }) | Select-Object -Unique) -join ', '
+                NoncompliantAlert          = (@($uniqueRules | Where-Object { $_ -notin $FilteredForAlerting } | ForEach-Object { ConvertTo-ComplianceSettingFriendlyName $_ }) | Select-Object -Unique) -join ', '
             })
         } catch {
             Write-Warning "Error processing device $($DeviceData.DeviceName): $_"
@@ -1766,7 +1857,7 @@ function Get-ApplicationFailures {
                 AssignmentStatus       = $AssignmentStatus
                 FailedUserCount        = $LineObject.FailedUserCount
                 FailedDeviceCount      = $LineObject.FailedDeviceCount
-                FailedDevicePercentage = [double]($LineObject.FailedDevicePercentage / 100).toString('0.00')
+                FailedDevicePercentage = [math]::Round([double]$LineObject.FailedDevicePercentage, 2)
             }) | Out-Null
     }
 

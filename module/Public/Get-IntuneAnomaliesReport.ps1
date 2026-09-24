@@ -49,8 +49,11 @@ try {
     $SecurityKeyContext = Get-BitLockerLapsAssignmentContext -DebugMode:$DebugMode
     $swPhase.Stop(); Write-Verbose ("[Report] BitLocker/LAPS context: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
 
+    # Cloud PCs (Windows 365 / Dev Box) have platform-managed disk encryption and are never Autopilot-registered.
+    $PhysicalDevices = @($DeviceData | Where-Object { -not $_.IsCloudPC })
+
     $swPhase.Restart()
-    $Report_BitLockerStatus    = Resolve-IntuneBitLockerAnomalies   -Devices $DeviceData -Context $SecurityKeyContext -TenantName $tenantname -ShowExcludedDevices:$ShowExcludedDevices
+    $Report_BitLockerStatus    = Resolve-IntuneBitLockerAnomalies   -Devices $PhysicalDevices -Context $SecurityKeyContext -TenantName $tenantname -ShowExcludedDevices:$ShowExcludedDevices
     $Report_LapsStatus         = Resolve-IntuneLapsAnomalies        -Devices $DeviceData -Context $SecurityKeyContext -TenantName $tenantname -ShowExcludedDevices:$ShowExcludedDevices
     $Report_DeprecatedSettings = Resolve-IntuneDeprecatedAnomalies  -Context $SecurityKeyContext -TenantName $tenantname
     $swPhase.Stop(); Write-Verbose ("[Report] BitLocker + LAPS + Deprecated resolution: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
@@ -64,7 +67,7 @@ try {
     # show up there as 'Device not encrypted and no BitLocker policy assigned' or
     # 'BitLocker policy assigned but device not encrypted' so we don't need a
     # standalone tab anymore.
-    $Report_DevicesWithoutAutopilotHash = $DeviceData | Where-Object { $_.DeviceHashUploaded -eq $false } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
+    $Report_DevicesWithoutAutopilotHash = $PhysicalDevices | Where-Object { $_.DeviceHashUploaded -eq $false -and -not $_.DeviceAssociated } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
     $Report_InactiveDevices = $DeviceData | Where-Object { $_.LastContact -lt (Get-Date).AddDays(-90) } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel, LastContact
     $Report_DisabledPrimaryUsers = $DeviceData | Where-Object { $_.PrimaryUser -in $DisabledEntraUsers.userPrincipalName } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
 
