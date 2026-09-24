@@ -1505,6 +1505,8 @@ function Get-AllDeviceData {
     $ComplianceRulesByDevice = @{}
     $NonCompliantDevices = $AllDeviceData | Where-Object { $_.complianceState -eq 'noncompliant' }
     if ($NonCompliantDevices -and $NonCompliantDevices.Count -gt 0) {
+        # Module-scoped map: reset so a previous tenant's day count never leaks into this report.
+        $script:ComplianceSettingFriendlyNames['RequireRemainContact'] = 'Is active (no compliance check-in within the compliance status validity period)'
         try {
             $checkinDays = (Invoke-MgGraphRequest -Uri 'https://graph.microsoft.com/beta/deviceManagement/settings' -OutputType PSObject -ErrorAction Stop).deviceComplianceCheckinThresholdDays
             if ($checkinDays) { $script:ComplianceSettingFriendlyNames['RequireRemainContact'] = "Is active (no compliance check-in in the last $checkinDays days)" }
