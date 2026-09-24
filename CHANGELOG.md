@@ -6,6 +6,24 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 
 
+## [1.2.2] - 2026-09-24
+
+Patch release for the Intune Anomalies report.
+
+### Changes
+
+- **Autopilot device preparation (v2) is recognised.** The *Not in Autopilot* tab (was *No Autopilot Hash*) only lists devices with neither a hardware hash nor a corporate identifier.
+- **Cloud PCs are left out of the BitLocker and Autopilot tabs**, where they were always false positives.
+- **Every tab explains what it checks.**
+- **Noncompliant reasons use the names from the Intune admin center**, e.g. *Require BitLocker* or *Is active (no compliance check-in in the last 31 days)*.
+
+### Fixes
+
+- **Noncompliant reason no longer shows "Unknown"** for devices that fail the built-in Default Device Compliance Policy.
+- **Application failure percentages are correct** (100% was shown as 1%).
+
+---
+
 ## [1.2.1] - 2026-06-18
 
 Patch release - fixes a perf regression and a missing-data symptom in the Intune Anomalies report's compliance fetch, plus a layout fix that affects every report.
