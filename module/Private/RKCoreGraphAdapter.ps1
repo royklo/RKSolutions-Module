@@ -1,6 +1,21 @@
 # Private: the module's implementation of the two Graph adapters module/Core calls.
 # The RKSolutions Maester pack has its own implementation (helpers/GraphAdapter.ps1); this file is not synced.
 
+function Invoke-RKCoreGraphGet {
+    # One GET. The Graph SDK retries 429/503/504 itself; retry 500 and 502 here like Maester's own Graph helper.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string] $Uri)
+
+    $delays = @(2, 4)
+    for ($attempt = 0; ; $attempt++) {
+        try { return Invoke-MgGraphRequest -Method GET -Uri $Uri -OutputType PSObject -ErrorAction Stop }
+        catch {
+            if ($attempt -ge $delays.Count -or (Get-RKCoreGraphErrorStatus -ErrorRecord $_) -notin 500, 502) { throw }
+            Start-Sleep -Seconds $delays[$attempt]
+        }
+    }
+}
+
 function Invoke-RKCoreGraphRequest {
     <#
     .SYNOPSIS
@@ -15,14 +30,14 @@ function Invoke-RKCoreGraphRequest {
 
     $target = ConvertTo-RKCoreGraphPath -Uri $Uri
     $next = "https://graph.microsoft.com/$($target.Version)/$($target.Path)"
-    if (-not $All) { return Invoke-MgGraphRequest -Method GET -Uri $next -OutputType PSObject -ErrorAction Stop }
+    if (-not $All) { return Invoke-RKCoreGraphGet -Uri $next }
 
     $items = [System.Collections.Generic.List[object]]::new()
     $seen = [System.Collections.Generic.HashSet[string]]::new()
     while ($next) {
         if (-not $seen.Add($next)) { throw "Graph returned the same @odata.nextLink twice for $Uri." }
-        $page = Invoke-MgGraphRequest -Method GET -Uri $next -OutputType PSObject -ErrorAction Stop
-        if ($page.PSObject.Properties['value']) { foreach ($item in @($page.value)) { $items.Add($item) } }
+        $page = Invoke-RKCoreGraphGet -Uri $next
+        if ($page.PSObject.Properties['value']) { foreach ($item in @($page.value | Where-Object { $null -ne $_ })) { $items.Add($item) } }
         else { $items.Add($page) }
         $next = $page.'@odata.nextLink'
     }

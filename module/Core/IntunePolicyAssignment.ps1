@@ -28,7 +28,10 @@ function Get-DetailedPolicyAssignments {
             }
             if ($path) { $assignmentsUri = "beta/deviceAppManagement/$path('$EntityId')/assignments" }
         }
-        catch { return @() }
+        catch {
+            if ($ThrowOnError -and (Get-RKCoreGraphErrorStatus -ErrorRecord $_) -ne 404) { throw }
+            return @()
+        }
     }
     elseif ($EntityType -eq "mobileAppConfigurations") {
         $assignmentsUri = "beta/deviceAppManagement/mobileAppConfigurations('$EntityId')/assignments"

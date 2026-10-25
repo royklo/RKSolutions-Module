@@ -41,8 +41,8 @@ if (Test-Path $privatePath) {
         if (Test-Path $fp) { . $fp }
     }
     # Report-specific private scripts. IntuneAnomalies leans on helpers
-    # (Get-DetailedPolicyAssignments, Test-IntuneFilter, $script:AllFilters) defined
-    # in IntuneEnrollmentFlows, so it must be loaded after it.
+    # ($script:AllFilters) defined in IntuneEnrollmentFlows, so it must be loaded after it.
+    # Get-DetailedPolicyAssignments and Test-IntuneFilter live in Core/IntunePolicyAssignment.ps1.
     $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1', 'CustomSecurityAttributes.ps1')
     foreach ($name in $domainOrder) {
         $fp = Join-Path $privatePath $name

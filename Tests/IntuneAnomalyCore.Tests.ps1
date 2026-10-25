@@ -87,6 +87,34 @@ Describe 'Module adapters' {
             (Invoke-RKCoreGraphRequest -Uri 'beta/x').'@odata.nextLink' | Should -Be 'n'
         }
     }
+    It 'Invoke-RKCoreGraphRequest retries a 502 once and returns the next result' {
+        InModuleScope RKSolutions {
+            $script:calls = 0
+            Mock Start-Sleep { }
+            Mock Invoke-MgGraphRequest {
+                $script:calls++
+                if ($script:calls -eq 1) {
+                    $e = [System.Exception]::new('bad gateway')
+                    $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 502 })
+                    throw $e
+                }
+                [pscustomobject]@{ value = @(1) }
+            }
+            @(Invoke-RKCoreGraphRequest -Uri 'beta/x' -All) | Should -Be @(1)
+        }
+    }
+    It 'Invoke-RKCoreGraphRequest does not retry a 403' {
+        InModuleScope RKSolutions {
+            Mock Start-Sleep { }
+            Mock Invoke-MgGraphRequest {
+                $e = [System.Exception]::new('forbidden')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
+                throw $e
+            }
+            { Invoke-RKCoreGraphRequest -Uri 'beta/x' -All } | Should -Throw
+            Should -Invoke Invoke-MgGraphRequest -Times 1 -Exactly
+        }
+    }
     It 'Invoke-RKCoreGraphBatch groups requests by version' {
         InModuleScope RKSolutions {
             Mock Invoke-RKGraphBatch { foreach ($r in $Requests) { [pscustomobject]@{ Id = $r.Id; Status = 200; Body = "$GraphVersion$($r.Url)" } } }
@@ -96,6 +124,39 @@ Describe 'Module adapters' {
                 ))
             ($out | Where-Object Id -EQ 'a').Body | Should -Be 'beta/x'
             ($out | Where-Object Id -EQ 'b').Body | Should -Be 'v1.0/y'
+        }
+    }
+}
+
+Describe 'Get-DetailedPolicyAssignments -ThrowOnError' {
+    It 'returns an empty result for a 404' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest {
+                $e = [System.Exception]::new('http 404')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 404 })
+                throw $e
+            }
+            @(Get-DetailedPolicyAssignments -EntityType 'configurationPolicies' -EntityId 'p1' -PolicyName 'P' -ThrowOnError).Count | Should -Be 0
+        }
+    }
+    It 'throws for a 500' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest {
+                $e = [System.Exception]::new('http 500')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 500 })
+                throw $e
+            }
+            { Get-DetailedPolicyAssignments -EntityType 'configurationPolicies' -EntityId 'p1' -PolicyName 'P' -ThrowOnError } | Should -Throw
+        }
+    }
+    It 'returns an empty result for a 500 without the switch' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest {
+                $e = [System.Exception]::new('http 500')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 500 })
+                throw $e
+            }
+            @(Get-DetailedPolicyAssignments -EntityType 'configurationPolicies' -EntityId 'p1' -PolicyName 'P').Count | Should -Be 0
         }
     }
 }

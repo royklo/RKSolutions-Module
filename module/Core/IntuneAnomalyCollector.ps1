@@ -535,9 +535,9 @@ function Get-AutopilotProfilesInformation {
 # backed) policy are actually applied (via assignment resolution incl. groups,
 # all users/devices, and assignment filters), and cross-references with the
 # recovery key / local credential directory endpoints to flag escrow gaps.
-# Reuses Invoke-GraphRequestWithPaging, Get-DetailedPolicyAssignments,
-# Test-IntuneFilter, and the $script:AllFilters cache established by
-# IntuneEnrollmentFlows.ps1 - load order is enforced in RKSolutions.psm1.
+# Reuses Invoke-GraphRequestWithPaging, the $script:AllFilters cache established by
+# IntuneEnrollmentFlows.ps1 (load order is enforced in RKSolutions.psm1), and
+# Get-DetailedPolicyAssignments and Test-IntuneFilter from Core/IntunePolicyAssignment.ps1.
 # ----------------------------------------------------------------------------
 
 function Get-BitLockerLapsAssignmentContext {

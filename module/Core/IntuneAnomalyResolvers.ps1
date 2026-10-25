@@ -51,7 +51,7 @@ function Test-AssignmentAppliesToManagedDevice {
         Evaluates a single Get-DetailedPolicyAssignments row against a managed device
         record using the pre-resolved group membership sets in the context. Returns
         @{ Applies = $bool; FilterDecision = '...' }. Assignment filters are honored
-        via Test-IntuneFilter (provided by IntuneEnrollmentFlows.ps1).
+        via Test-IntuneFilter (provided by Core/IntunePolicyAssignment.ps1).
     #>
     param(
         [Parameter(Mandatory)] [PSCustomObject] $Assignment,
