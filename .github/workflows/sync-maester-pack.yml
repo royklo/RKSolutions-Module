@@ -1,0 +1,61 @@
+# Copies module/Core into royklo/maester-pack-rksolutions (intune-anomalies/helpers/core) and opens or updates
+# one pull request there, with the pack's patch version raised. The pack's own CI checks it before it can be merged.
+# Needs the secret PACK_SYNC_TOKEN: a fine-grained token with Contents and Pull requests write on that repository only.
+name: Sync Maester pack
+
+on:
+  push:
+    branches: [main]
+    paths: ['module/Core/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-maester-pack
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: module
+
+      - uses: actions/checkout@v5
+        with:
+          repository: royklo/maester-pack-rksolutions
+          token: ${{ secrets.PACK_SYNC_TOKEN }}
+          path: pack
+
+      - name: Copy the core and raise the version
+        shell: pwsh
+        run: |
+          $commit = git -C module rev-parse --short HEAD
+          ./pack/tools/Sync-Core.ps1 -ModuleRoot ./module -Commit $commit
+          if (-not (git -C pack status --porcelain)) { Write-Output 'The core is already in sync.'; return }
+          $manifestPath = 'pack/intune-anomalies/maester-pack.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          $v = [version]$manifest.Version
+          $manifest.Version = "$($v.Major).$($v.Minor).$($v.Build + 1)"
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -Encoding utf8NoBOM
+          "COMMIT=$commit" >> $env:GITHUB_ENV
+          "VERSION=$($manifest.Version)" >> $env:GITHUB_ENV
+
+      - name: Open or update the pull request
+        if: env.COMMIT != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.PACK_SYNC_TOKEN }}
+        run: |
+          Set-Location pack
+          git config user.name 'rksolutions-sync'
+          git config user.email 'rksolutions-sync@users.noreply.github.com'
+          git checkout -B sync/rksolutions-core
+          git add intune-anomalies
+          git commit -m "chore(intune-anomalies): sync core from RKSolutions-Module@$env:COMMIT"
+          git push --force origin sync/rksolutions-core
+          $open = gh pr list --head sync/rksolutions-core --state open --json number --jq '.[0].number'
+          if ($open) { gh pr edit $open --title "Sync core from RKSolutions-Module@$env:COMMIT ($env:VERSION)" }
+          else { gh pr create --base main --head sync/rksolutions-core --title "Sync core from RKSolutions-Module@$env:COMMIT ($env:VERSION)" --body "Copied module/Core from royklo/RKSolutions-Module@$env:COMMIT into intune-anomalies/helpers/core and raised the pack to $env:VERSION. Add a CHANGELOG.md entry before merging." }
