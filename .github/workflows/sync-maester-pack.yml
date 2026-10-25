@@ -1,5 +1,5 @@
 # Copies module/Core into royklo/maester-pack-rksolutions (intune-anomalies/helpers/core) and opens or updates
-# one pull request there, with the pack's patch version raised. The pack's own CI checks it before it can be merged.
+# one pull request there, with the pack's patch version raised and a CHANGELOG entry added. The pack's own CI checks it before it can be merged.
 # Needs the secret PACK_SYNC_TOKEN: a fine-grained token with Contents and Pull requests write on that repository only.
 name: Sync Maester pack
 
@@ -22,6 +22,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: module
+          fetch-depth: 0
 
       - uses: actions/checkout@v5
         with:
@@ -32,16 +33,28 @@ jobs:
       - name: Copy the core and raise the version
         shell: pwsh
         run: |
-          $commit = git -C module rev-parse --short HEAD
+          $PSNativeCommandUseErrorActionPreference = $true
+          # The commit that last changed Core, so a run without Core changes leaves the copied files as they are.
+          $commit = git -C module log -1 --format=%h -- module/Core
           ./pack/tools/Sync-Core.ps1 -ModuleRoot ./module -Commit $commit
           if (-not (git -C pack status --porcelain)) { Write-Output 'The core is already in sync.'; return }
-          $manifestPath = 'pack/intune-anomalies/maester-pack.json'
-          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-          $v = [version]$manifest.Version
-          $manifest.Version = "$($v.Major).$($v.Minor).$($v.Build + 1)"
-          $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -Encoding utf8NoBOM
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          $manifestPath = Join-Path $PWD 'pack/intune-anomalies/maester-pack.json'
+          $text = [System.IO.File]::ReadAllText($manifestPath)
+          $v = [version](($text | ConvertFrom-Json).Version)
+          $version = "$($v.Major).$($v.Minor).$($v.Build + 1)"
+          # Replace the value in the text so the rest of the manifest stays byte for byte as it was.
+          $new = $text -replace '("Version"\s*:\s*")[^"]+(")', "`${1}$version`${2}"
+          if ($new -ceq $text) { throw "Could not raise the Version in $manifestPath." }
+          [System.IO.File]::WriteAllText($manifestPath, $new, $utf8)
+          $changelogPath = Join-Path $PWD 'pack/CHANGELOG.md'
+          $log = [System.IO.File]::ReadAllText($changelogPath)
+          $nl = if ($log.Contains("`r`n")) { "`r`n" } else { "`n" }
+          $entry = "## intune-anomalies $version$nl$nl- Core synced from RKSolutions-Module@$commit.$nl$nl"
+          $log = $log -replace '(?m)\A(# Changelog[ \t]*\r?\n\r?\n)', ('${1}' + $entry.Replace('$', '$$'))
+          [System.IO.File]::WriteAllText($changelogPath, $log, $utf8)
           "COMMIT=$commit" >> $env:GITHUB_ENV
-          "VERSION=$($manifest.Version)" >> $env:GITHUB_ENV
+          "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Open or update the pull request
         if: env.COMMIT != ''
@@ -49,13 +62,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PACK_SYNC_TOKEN }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           Set-Location pack
           git config user.name 'rksolutions-sync'
           git config user.email 'rksolutions-sync@users.noreply.github.com'
           git checkout -B sync/rksolutions-core
-          git add intune-anomalies
+          git add intune-anomalies CHANGELOG.md
           git commit -m "chore(intune-anomalies): sync core from RKSolutions-Module@$env:COMMIT"
           git push --force origin sync/rksolutions-core
+          $title = "Sync core from RKSolutions-Module@$env:COMMIT ($env:VERSION)"
+          $body = "Copied module/Core from royklo/RKSolutions-Module@$env:COMMIT into intune-anomalies/helpers/core and raised the pack to $env:VERSION. A CHANGELOG.md entry was added automatically; edit it after the last sync and before merging."
           $open = gh pr list --head sync/rksolutions-core --state open --json number --jq '.[0].number'
-          if ($open) { gh pr edit $open --title "Sync core from RKSolutions-Module@$env:COMMIT ($env:VERSION)" }
-          else { gh pr create --base main --head sync/rksolutions-core --title "Sync core from RKSolutions-Module@$env:COMMIT ($env:VERSION)" --body "Copied module/Core from royklo/RKSolutions-Module@$env:COMMIT into intune-anomalies/helpers/core and raised the pack to $env:VERSION. Add a CHANGELOG.md entry before merging." }
+          if ($open) { gh pr edit $open --title $title --body $body }
+          else { gh pr create --base main --head sync/rksolutions-core --title $title --body $body }
