@@ -236,14 +236,6 @@ function Resolve-IntuneNoncompliantDevices {
     [pscustomobject]@{ Rows = $rows.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Compliance', 'General' }
 }
 
-function Resolve-IntuneAppInstallFailures {
-    <# .SYNOPSIS Windows apps that failed to install on at least one device (most failed devices first). #>
-    [CmdletBinding()]
-    param([Parameter(Mandatory)] $Data)
-    $rows = @($Data.Apps | Where-Object { $_.FailedDeviceCount -gt 0 } | Sort-Object FailedDeviceCount -Descending)
-    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Apps' }
-}
-
 function Resolve-IntuneBitLockerAnomalies {
     <#
         For each Windows managed device, decide whether BitLocker is governed by an

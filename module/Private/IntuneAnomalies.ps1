@@ -298,7 +298,7 @@ function New-IntuneAnomaliesHTMLReport {
 
     <!-- Application Failures Panel -->
     <div id="panel-app-failures" class="rk-panel active">
-        <div class="rk-tab-intro"><strong>What we check:</strong> Windows apps in Intune with at least one failed installation, taken from each app's install summary in Intune and sorted by number of failed devices.</div>
+        <div class="rk-tab-intro"><strong>What we check:</strong> Windows apps in Intune with at least one failed installation, taken from the Intune app install status report and sorted by number of failed devices.</div>
         <div class="rk-filter-bar">
             <span>Filters:</span>
             <select id="appFailuresCustomerFilter" class="form-select" style="max-width:180px;">

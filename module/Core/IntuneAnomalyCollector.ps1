@@ -397,61 +397,6 @@ function Get-AllDeviceData {
 
 }
 
-function Get-IntuneAppData {
-    <#
-    .SYNOPSIS
-        The Windows apps of the tenant with their install summary. Readable is $false (with Error) when the app list
-        cannot be read for lack of permission (DeviceManagementApps.Read.All).
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [AllowEmptyString()] [string] $TenantName,
-        [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]] $Warnings
-    )
-
-    $types = 'win32CatalogApp', 'windowsStoreApp', 'microsoftStoreForBusinessApp', 'officeSuiteApp', 'windowsMicrosoftEdgeApp',
-        'windowsPhone81AppX', 'windowsPhone81StoreApp', 'windowsPhoneXAP', 'windowsAppX', 'windowsMobileMSI', 'windowsUniversalAppX',
-        'webApp', 'windowsWebApp', 'winGetApp'
-    $typeFilter = (@($types | ForEach-Object { "isof('microsoft.graph.$_')" }) + "(isof('microsoft.graph.win32LobApp') and not(isof('microsoft.graph.win32CatalogApp')))") -join ' or '
-    $filter = "($typeFilter) and (microsoft.graph.managedApp/appAvailability eq null or microsoft.graph.managedApp/appAvailability eq 'lineOfBusiness' or isAssigned eq true)"
-    try {
-        $apps = @(Invoke-RKCoreGraphRequest -Uri "beta/deviceAppManagement/mobileApps?`$filter=$filter&`$orderby=displayName" -All)
-    }
-    catch {
-        if ((Get-RKCoreGraphErrorStatus -ErrorRecord $_) -in 401, 403) {
-            return [pscustomobject]@{ Readable = $false; Error = $_.Exception.Message; Apps = @() }
-        }
-        throw
-    }
-
-    $requests = @(foreach ($a in $apps) { [pscustomobject]@{ Id = [string]$a.id; Url = "beta/deviceAppManagement/mobileApps/$($a.id)/installSummary" } })
-    $summaries = @{}
-    $unread = 0
-    foreach ($resp in @(Invoke-RKCoreGraphBatch -Requests $requests)) {
-        # Per-app summaries are best effort: one app that answers 400 must not stop every test.
-        if ($resp.Status -eq 200 -and $resp.Body) { $summaries[$resp.Id] = $resp.Body } else { $unread++ }
-    }
-    if ($unread -gt 0) { $Warnings.Add([pscustomobject]@{ Area = 'Apps'; Message = "The install summary of $unread app(s) could not be read; they are left out." }) }
-
-    $rows = foreach ($a in $apps) {
-        $s = $summaries[[string]$a.id]
-        if (-not $s) { continue }
-        $failed = [int]$s.failedDeviceCount
-        $targeted = $failed + [int]$s.installedDeviceCount + [int]$s.notInstalledDeviceCount + [int]$s.pendingInstallDeviceCount
-        [pscustomobject][ordered]@{
-            Customer               = $TenantName
-            Application            = $a.displayName
-            Platform               = 'Windows'
-            Version                = [string]$a.displayVersion
-            AssignmentStatus       = [bool]$a.isAssigned
-            FailedUserCount        = [int]$s.failedUserCount
-            FailedDeviceCount      = $failed
-            FailedDevicePercentage = if ($targeted -gt 0) { [math]::Round(100 * $failed / $targeted, 2) } else { 0 }
-        }
-    }
-    [pscustomobject]@{ Readable = $true; Error = $null; Apps = @($rows) }
-}
-
 function Get-AutopilotProfilesInformation {
     @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/windowsAutopilotDeploymentProfiles' -All)
 }
@@ -784,7 +729,6 @@ function Get-RKIntuneAnomalyData {
     $devices = @(Get-AllDeviceData -Users $users -TenantName $tenantName -Warnings $warnings)
     $profiles = @(Get-AutopilotProfilesInformation)
     $context = Get-BitLockerLapsAssignmentContext -Warnings $warnings
-    $apps = Get-IntuneAppData -TenantName $tenantName -Warnings $warnings
 
     [pscustomobject]@{
         TenantId                = [string]$organization.id
@@ -794,9 +738,6 @@ function Get-RKIntuneAnomalyData {
         Users                   = $users
         AutopilotProfiles       = $profiles
         SecurityKeyContext      = $context
-        Apps                    = $apps.Apps
-        AppsReadable            = $apps.Readable
-        AppsError               = $apps.Error
         BitLockerKeysReadable   = $context.BitLockerKeysReadable
         BitLockerKeysError      = $context.BitLockerKeysError
         LapsCredentialsReadable = $context.LapsCredentialsReadable

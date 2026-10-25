@@ -170,41 +170,6 @@ Describe 'Get-DetailedPolicyAssignments -ThrowOnError' {
 }
 
 Describe 'Collector error kinds' {
-    It 'Get-IntuneAppData reports an app list it may not read (403) as not readable' {
-        InModuleScope RKSolutions {
-            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceAppManagement/mobileApps*' } {
-                $e = [System.Exception]::new('http 403')
-                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
-                throw $e
-            }
-            $w = [System.Collections.Generic.List[object]]::new()
-            $r = Get-IntuneAppData -TenantName 'T' -Warnings $w
-            $r.Readable | Should -BeFalse
-            $r.Error | Should -Be 'http 403'
-            @($r.Apps).Count | Should -Be 0
-        }
-    }
-    It 'Get-IntuneAppData computes the failed percentage and leaves out an app whose summary answers 400' {
-        InModuleScope RKSolutions {
-            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceAppManagement/mobileApps*' } {
-                [pscustomobject]@{ id = 'a1'; displayName = 'App 1'; displayVersion = '1.0'; isAssigned = $true }
-                [pscustomobject]@{ id = 'a2'; displayName = 'App 2'; displayVersion = '2.0'; isAssigned = $false }
-            }
-            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/installSummary' } {
-                [pscustomobject]@{ Id = 'a1'; Status = 200; Body = [pscustomobject]@{ failedDeviceCount = 1; installedDeviceCount = 3; notInstalledDeviceCount = 0; pendingInstallDeviceCount = 0; failedUserCount = 1 } }
-                [pscustomobject]@{ Id = 'a2'; Status = 400; Body = $null }
-            }
-            $w = [System.Collections.Generic.List[object]]::new()
-            $r = Get-IntuneAppData -TenantName 'T' -Warnings $w
-            $r.Readable | Should -BeTrue
-            @($r.Apps).Count | Should -Be 1
-            $r.Apps[0].Application | Should -Be 'App 1'
-            $r.Apps[0].FailedDevicePercentage | Should -Be 25
-            $w.Count | Should -Be 1
-            $w[0].Area | Should -Be 'Apps'
-            $w[0].Message | Should -BeLike '*1 app(s)*'
-        }
-    }
     It 'Get-BitLockerLapsAssignmentContext marks the BitLocker keys unreadable on 403 and still returns the context' {
         InModuleScope RKSolutions {
             Mock Invoke-RKCoreGraphRequest { }
@@ -250,18 +215,6 @@ Describe 'Collector error kinds' {
             $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
             @($w | Where-Object { $_.Message -like '*group g1*' }).Area | Should -Be @('BitLocker', 'Laps')
             $ctx.GroupUserUpns['g1'].Contains('user@contoso.com') | Should -BeTrue
-        }
-    }
-    It 'Get-IntuneAppData throws when the app list answers 500' {
-        InModuleScope RKSolutions {
-            Mock Invoke-RKCoreGraphBatch { }
-            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceAppManagement/mobileApps*' } {
-                $e = [System.Exception]::new('http 500')
-                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 500 })
-                throw $e
-            }
-            $w = [System.Collections.Generic.List[object]]::new()
-            { Get-IntuneAppData -TenantName 'T' -Warnings $w } | Should -Throw 'http 500'
         }
     }
     It 'Get-BitLockerLapsAssignmentContext throws when recoveryKeys answers 500' {
@@ -402,13 +355,8 @@ Describe 'Resolvers' {
                     [pscustomobject]@{ id = '2'; userPrincipalName = 'on@t'; accountEnabled = $true }
                 )
                 AutopilotProfiles = @([pscustomobject]@{ displayName = 'Single'; outOfBoxExperienceSettings = [pscustomobject]@{ deviceUsageType = 'SingleUser' } })
-                Apps = @(
-                    [pscustomobject]@{ Application = 'A'; FailedDeviceCount = 0 }
-                    [pscustomobject]@{ Application = 'B'; FailedDeviceCount = 3 }
-                    [pscustomobject]@{ Application = 'C'; FailedDeviceCount = 9 }
-                )
                 SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @() }
-                Warnings = @([pscustomobject]@{ Area = 'Compliance'; Message = 'w1' }, [pscustomobject]@{ Area = 'Apps'; Message = 'w2' })
+                Warnings = @([pscustomobject]@{ Area = 'Compliance'; Message = 'w1' })
             }
         }
     }
@@ -433,11 +381,6 @@ Describe 'Resolvers' {
         $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneNoncompliantDevices -Data $D }
         @($r.Rows).Count | Should -Be 2
         @($r.Warnings).Message | Should -Be @('w1')
-    }
-    It 'App failures: only failing apps, highest first' {
-        $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneAppInstallFailures -Data $D }
-        @($r.Rows).Application | Should -Be @('C', 'B')
-        @($r.Warnings).Message | Should -Be @('w2')
     }
     It 'Disabled primary user matches the UPN case-insensitively' {
         $r = InModuleScope RKSolutions {
@@ -466,10 +409,9 @@ Describe 'Resolvers' {
     }
     It 'Resolvers work on a Data object without Warnings' {
         $r = InModuleScope RKSolutions {
-            $d = [pscustomobject]@{ Devices = @(); Apps = @(); Users = @(); AutopilotProfiles = @() }
+            $d = [pscustomobject]@{ Devices = @(); Users = @(); AutopilotProfiles = @() }
             @(
                 (Resolve-IntuneNoncompliantDevices -Data $d)
-                (Resolve-IntuneAppInstallFailures -Data $d)
                 (Resolve-IntuneMissingAutopilotDevices -Data $d)
             )
         }
@@ -617,19 +559,19 @@ Describe 'Unreadable keys, settings fallback and null children' {
 }
 
 Describe 'General warnings' {
-    It 'Every device check carries the General warnings, the app and deprecated checks do not' {
+    It 'Every device check carries the General warnings, the deprecated check does not' {
         $r = InModuleScope RKSolutions {
-            $d = [pscustomobject]@{ TenantName = 'T'; Devices = @(); Users = @(); Apps = @(); AutopilotProfiles = @(); Warnings = @([pscustomobject]@{ Area = 'General'; Message = 'Device X could not be processed' }, [pscustomobject]@{ Area = 'Zzz'; Message = 'other' })
+            $d = [pscustomobject]@{ TenantName = 'T'; Devices = @(); Users = @(); AutopilotProfiles = @(); Warnings = @([pscustomobject]@{ Area = 'General'; Message = 'Device X could not be processed' }, [pscustomobject]@{ Area = 'Zzz'; Message = 'other' })
                 SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @(); BitLockerPolicies = @(); LapsPolicies = @(); BitLockerKeyDeviceIds = [System.Collections.Generic.HashSet[string]]::new(); LapsCredentialByDeviceId = @{}; LapsCredentialByDeviceName = @{}; EntraDeviceIdByName = @{}; GroupDeviceAadIds = @{}; GroupUserUpns = @{}; Filters = @{} } }
             $out = @{}
-            foreach ($f in 'BitLocker', 'Laps', 'Noncompliant', 'Inactive', 'DisabledPrimaryUsers', 'MissingAutopilotDevices', 'MultiUserDevices', 'AppInstallFailures', 'Deprecated') {
+            foreach ($f in 'BitLocker', 'Laps', 'Noncompliant', 'Inactive', 'DisabledPrimaryUsers', 'MissingAutopilotDevices', 'MultiUserDevices', 'Deprecated') {
                 $cmd = (Get-Command "Resolve-Intune*$f*" | Select-Object -First 1).Name
                 $out[$f] = @((& $cmd -Data $d).Warnings.Message)
             }
             $out
         }
         foreach ($f in 'BitLocker', 'Laps', 'Noncompliant', 'Inactive', 'DisabledPrimaryUsers', 'MissingAutopilotDevices', 'MultiUserDevices') { $r[$f] | Should -Be @('Device X could not be processed') -Because $f }
-        foreach ($f in 'AppInstallFailures', 'Deprecated') { $r[$f] | Should -BeNullOrEmpty -Because $f }
+        foreach ($f in 'Deprecated') { $r[$f] | Should -BeNullOrEmpty -Because $f }
     }
 }
 
@@ -652,7 +594,7 @@ Describe 'Dropped connections' {
 Describe 'Get-RKIntuneAnomaly' {
     BeforeAll {
         $script:anomalyData = {
-            param($Keys = $true, $Laps = $true, $Apps = $true)
+            param($Keys = $true, $Laps = $true)
             $policy = [pscustomobject]@{ DisplayName = 'P'; Source = 'Catalog'; Assignments = @(
                     [pscustomobject]@{ AssignmentType = 'All Devices' }
                     [pscustomobject]@{ AssignmentType = 'Group (Exclude)'; GroupId = 'g1' }) }
@@ -666,15 +608,16 @@ Describe 'Get-RKIntuneAnomaly' {
             [pscustomobject]@{
                 TenantName = 'T'; CollectedAt = [datetime]'2026-10-25'
                 Devices = @([pscustomobject]@{ Customer = 'T'; DeviceName = 'E1'; AzureAdDeviceId = 'aad1'; Encrypted = $false; PrimaryUser = 'u@t'; Serialnumber = 'S'; IsCloudPC = $false; LastContact = Get-Date; DeviceHashUploaded = $true; DeviceAssociated = $false; usersLoggedOnCount = 1; OperatingSystemEdition = 'Pro'; OSFriendlyname = 'W11' })
-                Users = @(); AutopilotProfiles = @(); Apps = @(); SecurityKeyContext = $ctx
+                Users = @(); AutopilotProfiles = @(); SecurityKeyContext = $ctx
                 Warnings = @([pscustomobject]@{ Area = 'BitLocker'; Message = 'same' }, [pscustomobject]@{ Area = 'BitLocker'; Message = 'same' })
-                BitLockerKeysReadable = $Keys; LapsCredentialsReadable = $Laps; AppsReadable = $Apps
+                BitLockerKeysReadable = $Keys; LapsCredentialsReadable = $Laps
             }
         }
     }
     BeforeEach {
         Mock -ModuleName RKSolutions Get-MgContext { [pscustomobject]@{ TenantId = 't' } }
-        Mock -ModuleName RKSolutions Get-RKIntuneAnomalyData { & $script:anomalyData $false $true $false }
+        Mock -ModuleName RKSolutions Get-RKIntuneAnomalyData { & $script:anomalyData $false $true }
+        Mock -ModuleName RKSolutions Get-ApplicationFailures { }
     }
     It 'returns Info rows only with -ShowExcludedDevices' {
         @((Get-RKIntuneAnomaly).BitLocker) | Should -BeNullOrEmpty
@@ -697,7 +640,28 @@ Describe 'Get-RKIntuneAnomaly' {
         $a = Get-RKIntuneAnomaly
         $a.BitLockerKeysReadable | Should -BeFalse
         $a.LapsCredentialsReadable | Should -BeTrue
+        $a.AppsReadable | Should -BeTrue
+    }
+    It 'takes AppInstallFailures from Get-ApplicationFailures' {
+        Mock -ModuleName RKSolutions Get-ApplicationFailures { [pscustomobject]@{ Application = 'A'; FailedDeviceCount = 3 } }
+        $a = Get-RKIntuneAnomaly
+        @($a.AppInstallFailures).Application | Should -Be @('A')
+        Should -Invoke Get-ApplicationFailures -ModuleName RKSolutions -ParameterFilter { $TenantName -eq 'T' }
+    }
+    It 'gives AppsReadable $false and an empty array when the app report answers 403' {
+        Mock -ModuleName RKSolutions Get-ApplicationFailures {
+            $e = [System.Exception]::new('http 403')
+            $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
+            throw $e
+        }
+        $a = Get-RKIntuneAnomaly
         $a.AppsReadable | Should -BeFalse
+        $a.AppInstallFailures -is [array] | Should -BeTrue
+        $a.AppInstallFailures.Count | Should -Be 0
+    }
+    It 'throws when the app report fails with another error' {
+        Mock -ModuleName RKSolutions Get-ApplicationFailures { throw 'http 500' }
+        { Get-RKIntuneAnomaly } | Should -Throw '*http 500*'
     }
     It 'throws without a Graph context' {
         Mock -ModuleName RKSolutions Get-MgContext { $null }
