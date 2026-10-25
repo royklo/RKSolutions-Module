@@ -385,3 +385,71 @@ Describe 'Collector logic' {
         }
     }
 }
+
+Describe 'Resolvers' {
+    BeforeAll {
+        $script:data = InModuleScope RKSolutions {
+            $old = (Get-Date).AddDays(-200)
+            [pscustomobject]@{
+                TenantName = 'T'
+                Devices = @(
+                    [pscustomobject]@{ Customer = 'T'; DeviceName = 'D1'; PrimaryUser = 'off@t'; Serialnumber = 'S1'; DeviceManufacturer = 'M'; DeviceModel = 'X'; LastContact = $old; DeviceHashUploaded = $false; DeviceAssociated = $false; IsCloudPC = $false; usersLoggedOnCount = 2; usersLoggedOnIds = 'a, b'; EnrollmentProfile = 'Single'; ComplianceStatus = 'noncompliant'; NoncompliantBasedOn = 'Require BitLocker, Real-time protection (turned off)'; NoncompliantAlert = 'Require BitLocker' }
+                    [pscustomobject]@{ Customer = 'T'; DeviceName = 'D2'; PrimaryUser = 'on@t'; Serialnumber = 'S2'; DeviceManufacturer = 'M'; DeviceModel = 'X'; LastContact = (Get-Date); DeviceHashUploaded = $true; DeviceAssociated = $false; IsCloudPC = $false; usersLoggedOnCount = 1; usersLoggedOnIds = 'a'; EnrollmentProfile = 'Single'; ComplianceStatus = 'compliant'; NoncompliantBasedOn = ''; NoncompliantAlert = '' }
+                    [pscustomobject]@{ Customer = 'T'; DeviceName = 'CPC'; PrimaryUser = 'on@t'; Serialnumber = 'S3'; DeviceManufacturer = 'M'; DeviceModel = 'X'; LastContact = (Get-Date); DeviceHashUploaded = $false; DeviceAssociated = $false; IsCloudPC = $true; usersLoggedOnCount = 1; usersLoggedOnIds = 'a'; EnrollmentProfile = ''; ComplianceStatus = 'compliant'; NoncompliantBasedOn = ''; NoncompliantAlert = '' }
+                )
+                Users = @(
+                    [pscustomobject]@{ id = '1'; userPrincipalName = 'off@t'; accountEnabled = $false }
+                    [pscustomobject]@{ id = '2'; userPrincipalName = 'on@t'; accountEnabled = $true }
+                )
+                AutopilotProfiles = @([pscustomobject]@{ displayName = 'Single'; outOfBoxExperienceSettings = [pscustomobject]@{ deviceUsageType = 'SingleUser' } })
+                Apps = @(
+                    [pscustomobject]@{ Application = 'A'; FailedDeviceCount = 0 }
+                    [pscustomobject]@{ Application = 'B'; FailedDeviceCount = 3 }
+                    [pscustomobject]@{ Application = 'C'; FailedDeviceCount = 9 }
+                )
+                SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @() }
+                Warnings = @([pscustomobject]@{ Area = 'Compliance'; Message = 'w1' }, [pscustomobject]@{ Area = 'Apps'; Message = 'w2' })
+            }
+        }
+    }
+
+    It 'Inactive: devices older than -Days' {
+        $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneInactiveDevices -Data $D -Days 90 }
+        @($r.Rows).DeviceName | Should -Be @('D1')
+    }
+    It 'Disabled primary user' {
+        $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneDisabledPrimaryUsers -Data $D }
+        @($r.Rows).DeviceName | Should -Be @('D1')
+    }
+    It 'Missing Autopilot leaves out Cloud PCs' {
+        $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneMissingAutopilotDevices -Data $D }
+        @($r.Rows).DeviceName | Should -Be @('D1')
+    }
+    It 'Multi-user only on single-user Autopilot profiles' {
+        $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneMultiUserDevices -Data $D }
+        @($r.Rows).DeviceName | Should -Be @('D1')
+    }
+    It 'Noncompliant: one row per reason, with its Compliance warnings' {
+        $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneNoncompliantDevices -Data $D }
+        @($r.Rows).Count | Should -Be 2
+        @($r.Warnings).Message | Should -Be @('w1')
+    }
+    It 'App failures: only failing apps, highest first' {
+        $r = InModuleScope RKSolutions -Parameters @{ D = $script:data } { param($D) Resolve-IntuneAppInstallFailures -Data $D }
+        @($r.Rows).Application | Should -Be @('C', 'B')
+        @($r.Warnings).Message | Should -Be @('w2')
+    }
+    It 'Deprecated: reads display names from the expanded setting definitions' {
+        $r = InModuleScope RKSolutions {
+            $policy = [pscustomobject]@{ id = 'p1'; name = 'Pol'; platforms = 'windows10'; technologies = 'mdm'; settings = @(
+                    [pscustomobject]@{
+                        settingInstance    = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'; settingDefinitionId = 'def_a'; choiceSettingValue = [pscustomobject]@{ value = 'def_a_1' } }
+                        settingDefinitions = @([pscustomobject]@{ id = 'def_a'; displayName = 'Old thing (Deprecated)' })
+                    }) }
+            $d = [pscustomobject]@{ TenantName = 'T'; SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @($policy) }; Warnings = @() }
+            Resolve-IntuneDeprecatedAnomalies -Data $d
+        }
+        @($r.Rows).SettingDisplayName | Should -Be @('Old thing (Deprecated)')
+        @($r.Rows)[0].DetectionSource | Should -Be 'CatalogDisplayName'
+    }
+}

@@ -170,6 +170,80 @@ function Get-DeviceAppliedPolicies {
     return [PSCustomObject]@{ Applied = @($applied); Excluded = @($excluded) }
 }
 
+function Select-RKAnomalyWarning {
+    <#
+    .SYNOPSIS
+        The collection warnings of the given areas.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Data, [Parameter(Mandatory)] [string[]] $Area)
+    @($Data.Warnings | Where-Object { $_.Area -in $Area })
+}
+
+function Resolve-IntuneInactiveDevices {
+    <# .SYNOPSIS Windows devices whose last Intune sync is older than -Days (oldest first). #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Data, [int] $Days = 90)
+    $cutoff = (Get-Date).AddDays(-$Days)
+    # Same test as the report always used: a device without LastContact also counts as inactive.
+    $rows = @($Data.Devices | Where-Object { $_.LastContact -lt $cutoff } | Sort-Object LastContact |
+            Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel, LastContact)
+    [pscustomobject]@{ Rows = $rows; Warnings = @() }
+}
+
+function Resolve-IntuneDisabledPrimaryUsers {
+    <# .SYNOPSIS Windows devices whose primary user is disabled in Entra ID. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Data)
+    $disabled = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($u in $Data.Users) { if ($u.accountEnabled -eq $false -and $u.userPrincipalName) { [void]$disabled.Add([string]$u.userPrincipalName) } }
+    $rows = @($Data.Devices | Where-Object { $_.PrimaryUser -and $disabled.Contains([string]$_.PrimaryUser) } | Sort-Object DeviceName |
+            Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel)
+    [pscustomobject]@{ Rows = $rows; Warnings = @() }
+}
+
+function Resolve-IntuneMissingAutopilotDevices {
+    <# .SYNOPSIS Physical Windows devices with neither an Autopilot hash nor a corporate identifier. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Data)
+    $rows = @($Data.Devices | Where-Object { -not $_.IsCloudPC -and $_.DeviceHashUploaded -eq $false -and -not $_.DeviceAssociated } | Sort-Object DeviceName |
+            Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel)
+    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Autopilot' }
+}
+
+function Resolve-IntuneMultiUserDevices {
+    <# .SYNOPSIS Devices enrolled with a single-user Autopilot profile on which more than one user signed in. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Data)
+    $singleUser = @($Data.AutopilotProfiles | Where-Object { $_.outOfBoxExperienceSettings.deviceUsageType -eq 'SingleUser' } | ForEach-Object { $_.displayName })
+    $rows = @($Data.Devices | Where-Object { $_.usersLoggedOnCount -gt 1 -and $_.EnrollmentProfile -in $singleUser } | Sort-Object DeviceName |
+            Select-Object Customer, DeviceName, PrimaryUser, EnrollmentProfile, usersLoggedOnCount, usersLoggedOnIds)
+    [pscustomobject]@{ Rows = $rows; Warnings = @() }
+}
+
+function Resolve-IntuneNoncompliantDevices {
+    <# .SYNOPSIS Noncompliant Windows devices, one row per compliance rule that failed. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Data)
+    $rows = [System.Collections.Generic.List[object]]::new()
+    foreach ($device in @($Data.Devices | Where-Object { $_.ComplianceStatus -eq 'noncompliant' } | Sort-Object DeviceName)) {
+        $reasons = @(if ($device.NoncompliantBasedOn) { $device.NoncompliantBasedOn -split ', ' | ForEach-Object { $_.Trim() } | Where-Object { $_ } })
+        if ($reasons.Count -eq 0) { $reasons = @('Unknown') }
+        foreach ($reason in $reasons) {
+            $rows.Add([pscustomobject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = $reason; NoncompliantAlert = $device.NoncompliantAlert })
+        }
+    }
+    [pscustomobject]@{ Rows = $rows.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Compliance' }
+}
+
+function Resolve-IntuneAppInstallFailures {
+    <# .SYNOPSIS Windows apps that failed to install on at least one device (most failed devices first). #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Data)
+    $rows = @($Data.Apps | Where-Object { $_.FailedDeviceCount -gt 0 } | Sort-Object FailedDeviceCount -Descending)
+    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Apps' }
+}
+
 function Resolve-IntuneBitLockerAnomalies {
     <#
         For each Windows managed device, decide whether BitLocker is governed by an
@@ -178,15 +252,14 @@ function Resolve-IntuneBitLockerAnomalies {
 
         A device that was deliberately excluded (via an exclude group or an assignment
         filter that rejected it) is *not* an anomaly by default - that's the admin's
-        explicit intent. Pass -ShowExcludedDevices to surface those rows as Info.
+        explicit intent. Those devices still come back, as Info rows.
     #>
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [array]          $Devices,
-        [Parameter(Mandatory)] [PSCustomObject] $Context,
-        [Parameter(Mandatory)] [string]         $TenantName,
-        [switch]                                $ShowExcludedDevices
-    )
+    param([Parameter(Mandatory)] $Data, [string] $TenantName)
+    if (-not $TenantName) { $TenantName = $Data.TenantName }
+    $Context = $Data.SecurityKeyContext
+    # Cloud PCs have platform-managed disk encryption.
+    $Devices = @($Data.Devices | Where-Object { -not $_.IsCloudPC })
     $out = [System.Collections.Generic.List[PSObject]]::new()
     foreach ($d in $Devices) {
         $aadId = Resolve-DeviceAzureAdDeviceId -Device $d -Context $Context
@@ -219,8 +292,7 @@ function Resolve-IntuneBitLockerAnomalies {
 
         $status = $null; $severity = $null
         if ($applied.Count -eq 0 -and $excluded.Count -gt 0) {
-            # Intentional exclusion. Skip unless caller asked to surface them.
-            if (-not $ShowExcludedDevices) { continue }
+            # Intentional exclusion, surfaced as Info.
             $reasons = ($excluded | Select-Object -ExpandProperty Reason -Unique) -join ', '
             $status = "Intentionally excluded from BitLocker policies ($reasons)"
             $severity = 'Info'
@@ -243,7 +315,7 @@ function Resolve-IntuneBitLockerAnomalies {
             Status             = $status
         })
     }
-    return $out
+    [pscustomobject]@{ Rows = $out.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'BitLocker' }
 }
 
 function Resolve-IntuneLapsAnomalies {
@@ -253,16 +325,14 @@ function Resolve-IntuneLapsAnomalies {
         A backup older than -MaxBackupAgeDays is reported as a rotation gap.
 
         Devices that were explicitly excluded (exclude group or assignment filter) are
-        suppressed by default; pass -ShowExcludedDevices to surface them as Info rows.
+        surfaced as Info rows.
     #>
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [array]          $Devices,
-        [Parameter(Mandatory)] [PSCustomObject] $Context,
-        [Parameter(Mandatory)] [string]         $TenantName,
-        [int]    $MaxBackupAgeDays = 60,
-        [switch] $ShowExcludedDevices
-    )
+    param([Parameter(Mandatory)] $Data, [string] $TenantName, [int] $MaxBackupAgeDays = 60)
+    if (-not $TenantName) { $TenantName = $Data.TenantName }
+    $Context = $Data.SecurityKeyContext
+    # LAPS covers every device.
+    $Devices = @($Data.Devices)
     $out = [System.Collections.Generic.List[PSObject]]::new()
     $cutoff = (Get-Date).AddDays(-$MaxBackupAgeDays)
 
@@ -291,7 +361,6 @@ function Resolve-IntuneLapsAnomalies {
         }
 
         if ($applied.Count -eq 0 -and $excluded.Count -gt 0) {
-            if (-not $ShowExcludedDevices) { continue }
             $reasons = ($excluded | Select-Object -ExpandProperty Reason -Unique) -join ', '
             $status = "Intentionally excluded from LAPS policies ($reasons)"
             $severity = 'Info'
@@ -314,7 +383,7 @@ function Resolve-IntuneLapsAnomalies {
             Status             = $status
         })
     }
-    return $out
+    [pscustomobject]@{ Rows = $out.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Laps' }
 }
 
 # ----------------------------------------------------------------------------
@@ -325,10 +394,10 @@ function Resolve-IntuneLapsAnomalies {
 #   1. Catalog DisplayName for the settingDefinitionId contains "deprecated"
 #   2. The setting's raw definition id contains "deprecated"
 #   3. The configured value string contains "deprecated"
-# Catalog data comes from Get-RKIntuneSettingsCatalog (cached download from
-# github.com/royklo/IntuneSettingsCatalogData); when the catalog is empty the
-# walker still detects the subset that carries "deprecated" in the raw id or
-# value string.
+# Display names come from the $expand=settingDefinitions read of each policy's
+# settings (done by the collector); when a setting has no definition the walker
+# still detects the subset that carries "deprecated" in the raw id or value
+# string.
 # ----------------------------------------------------------------------------
 
 function Test-IsSettingDeprecated {
@@ -434,19 +503,23 @@ function Get-IntuneSettingDeprecations {
 
 function Resolve-IntuneDeprecatedAnomalies {
     <#
-        Iterates the Settings Catalog policies already on the context, scans
-        every setting against the cached settings-catalog lookup, and emits one
-        row per deprecated setting in use. Loads / refreshes the catalog on
-        first call; subsequent calls in the same session reuse it.
+        Iterates the Settings Catalog policies already on the data object, scans
+        every setting against the expanded setting definitions, and emits one
+        row per deprecated setting in use.
     #>
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [PSCustomObject] $Context,
-        [Parameter(Mandatory)] [string]         $TenantName
-    )
+    param([Parameter(Mandatory)] $Data, [string] $TenantName)
+    if (-not $TenantName) { $TenantName = $Data.TenantName }
+    $Context = $Data.SecurityKeyContext
 
-    Write-Host '  Scanning Settings Catalog policies for deprecated settings...' -ForegroundColor Cyan
-    $catalog = Get-RKIntuneSettingsCatalog
+    Write-Verbose 'Scanning Settings Catalog policies for deprecated settings...'
+    # Display names come from configurationPolicies/{id}/settings?$expand=settingDefinitions, read by the collector.
+    $catalog = @{}
+    foreach ($policy in $Context.ConfigurationPolicies) {
+        foreach ($s in @($policy.settings)) {
+            foreach ($def in @($s.settingDefinitions)) { if ($def.id -and -not $catalog.ContainsKey([string]$def.id)) { $catalog[[string]$def.id] = [pscustomobject]@{ DisplayName = [string]$def.displayName } } }
+        }
+    }
     $out = [System.Collections.Generic.List[PSObject]]::new()
 
     foreach ($policy in $Context.ConfigurationPolicies) {
@@ -473,6 +546,6 @@ function Resolve-IntuneDeprecatedAnomalies {
         }
     }
 
-    Write-Host "    Found $($out.Count) deprecated setting instance(s) across $($Context.ConfigurationPolicies.Count) Settings Catalog policies." -ForegroundColor Gray
-    return $out
+    Write-Verbose "Found $($out.Count) deprecated setting instance(s) across $($Context.ConfigurationPolicies.Count) Settings Catalog policies."
+    [pscustomobject]@{ Rows = @($out | Sort-Object PolicyName, SettingDisplayName); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Settings' }
 }
