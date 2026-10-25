@@ -121,7 +121,7 @@ function Get-DeviceAppliedPolicies {
         an opt-in flag.
     #>
     param(
-        [Parameter(Mandatory)] [array]      $Policies,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array] $Policies,
         [Parameter(Mandatory)] [PSCustomObject] $Device,
         [Parameter(Mandatory)] [PSCustomObject] $Context
     )

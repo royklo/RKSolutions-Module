@@ -505,6 +505,32 @@ Describe 'Resolvers' {
             @($r[$k].Rows)[0].Status | Should -BeLike 'Intentionally excluded*'
         }
     }
+    It 'BitLocker and LAPS resolvers work when the tenant has no such policy (empty lists)' {
+        $r = InModuleScope RKSolutions {
+            $ctx = [pscustomobject]@{
+                EntraDeviceIdByName        = @{}
+                GroupDeviceAadIds          = @{}
+                GroupUserUpns              = @{}
+                Filters                    = @{}
+                BitLockerPolicies          = [System.Collections.Generic.List[object]]::new()
+                BitLockerKeyDeviceIds      = [System.Collections.Generic.HashSet[string]]::new()
+                LapsPolicies               = [System.Collections.Generic.List[object]]::new()
+                LapsCredentialByDeviceId   = @{}
+                LapsCredentialByDeviceName = @{}
+            }
+            $d = [pscustomobject]@{
+                TenantName         = 'T'
+                Devices            = @([pscustomobject]@{ DeviceName = 'N1'; AzureAdDeviceId = 'aad1'; PrimaryUser = 'u@t'; Serialnumber = 'S'; Encrypted = $false; IsCloudPC = $false })
+                SecurityKeyContext = $ctx
+                Warnings           = @()
+            }
+            @{ BitLocker = (Resolve-IntuneBitLockerAnomalies -Data $d); Laps = (Resolve-IntuneLapsAnomalies -Data $d) }
+        }
+        @($r.BitLocker.Rows)[0].Severity | Should -Be 'Critical'
+        @($r.BitLocker.Rows)[0].Status | Should -Be 'Device not encrypted and no BitLocker policy assigned'
+        @($r.Laps.Rows)[0].Severity | Should -Be 'Warning'
+        @($r.Laps.Rows)[0].Status | Should -Be 'No Entra-backed LAPS policy assigned'
+    }
     It 'Deprecated: reads display names from the expanded setting definitions' {
         $r = InModuleScope RKSolutions {
             $policy = [pscustomobject]@{ id = 'p1'; name = 'Pol'; platforms = 'windows10'; technologies = 'mdm'; settings = @(
