@@ -274,7 +274,7 @@ function Get-AllDeviceData {
 
         # Best effort: a noncompliant device without rules shows as Unknown on the Noncompliant tab, so count them.
         $devicesWithoutRules = @($NonCompliantDevices | Where-Object { -not ($ComplianceRulesByDevice.ContainsKey($_.id) -and $ComplianceRulesByDevice[$_.id].Count -gt 0) }).Count
-        if ($devicesWithoutRules -gt 0) { $Warnings.Add([pscustomobject]@{ Area = 'Compliance'; Message = "The compliance reasons of $devicesWithoutRules device(s) could not be read; they show as Unknown." }) }
+        if ($devicesWithoutRules -gt 0) { $Warnings.Add([pscustomobject]@{ Area = 'Compliance'; Message = "The compliance reasons of $devicesWithoutRules device(s) are not available (they could not be read, or the device fails more than 10 policies); they show as Unknown." }) }
     }
 
     # Loop through all devices for device data
@@ -292,8 +292,8 @@ function Get-AllDeviceData {
             $DeviceProperties = $DeviceData
 
             # Process Autopilot information via pre-built hashtable
-            $AutopilotInfo = $AutopilotLookup[$DeviceData.SerialNumber]
-            $HashUploaded = $AutopilotLookup.ContainsKey($DeviceData.SerialNumber)
+            $AutopilotInfo = $AutopilotLookup[[string]$DeviceData.SerialNumber]
+            $HashUploaded = $AutopilotLookup.ContainsKey([string]$DeviceData.SerialNumber)
 
             # Compliance rules were prefetched via $batch above; just look up.
             $FilteredForAlerting = @("DefaultDeviceCompliancePolicy.RequireDeviceCompliancePolicyAssigned", "DefaultDeviceCompliancePolicy.RequireRemainContact")
@@ -667,7 +667,7 @@ function Get-BitLockerLapsAssignmentContext {
         # Fall back to sequential paging for those groups only — rare in practice.
         $nextLinkFollowups = [System.Collections.Generic.List[object]]::new()
         foreach ($resp in $memberResponses) {
-            $body = Get-RKCoreBatchBody -Response $resp -What "the members of group $($resp.Id.Substring(3))" -Area 'BitLocker' -Warnings $Warnings; if (-not $body) { continue }
+            $body = Get-RKCoreBatchBody -Response $resp -What "the members of group $($resp.Id.Substring(3))" -Area 'BitLocker', 'Laps' -Warnings $Warnings; if (-not $body) { continue }
             $isUser = $resp.Id.StartsWith('gu:')
             $gid    = $resp.Id.Substring(3)
             foreach ($m in @($body.value)) {

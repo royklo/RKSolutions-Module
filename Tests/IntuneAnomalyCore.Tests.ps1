@@ -59,6 +59,14 @@ Describe 'Get-RKCoreBatchBody' {
             $w[0].Message | Should -BeLike '*group g1*'
         }
     }
+    It 'Warns once per area for 404' {
+        InModuleScope RKSolutions {
+            $w = [System.Collections.Generic.List[object]]::new()
+            Get-RKCoreBatchBody -Response ([pscustomobject]@{ Id = 'a'; Status = 404; Body = $null }) -What 'group g1' -Area 'BitLocker', 'Laps' -Warnings $w | Should -BeNullOrEmpty
+            @($w.Area) | Should -Be @('BitLocker', 'Laps')
+            @($w | Where-Object { $_.Message -like '*group g1*' }).Count | Should -Be 2
+        }
+    }
     It 'Throws for any other status' {
         { InModuleScope RKSolutions {
             $w = [System.Collections.Generic.List[object]]::new()
@@ -240,8 +248,33 @@ Describe 'Collector error kinds' {
             }
             $w = [System.Collections.Generic.List[object]]::new()
             $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
-            @($w | Where-Object { $_.Area -eq 'BitLocker' -and $_.Message -like '*group g1*' }).Count | Should -Be 1
+            @($w | Where-Object { $_.Message -like '*group g1*' }).Area | Should -Be @('BitLocker', 'Laps')
             $ctx.GroupUserUpns['g1'].Contains('user@contoso.com') | Should -BeTrue
+        }
+    }
+    It 'Get-IntuneAppData throws when the app list answers 500' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceAppManagement/mobileApps*' } {
+                $e = [System.Exception]::new('http 500')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 500 })
+                throw $e
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            { Get-IntuneAppData -TenantName 'T' -Warnings $w } | Should -Throw 'http 500'
+        }
+    }
+    It 'Get-BitLockerLapsAssignmentContext throws when recoveryKeys answers 500' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'v1.0/informationProtection/bitlocker/recoveryKeys*' } {
+                $e = [System.Exception]::new('http 500')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 500 })
+                throw $e
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            { Get-BitLockerLapsAssignmentContext -Warnings $w } | Should -Throw 'http 500'
         }
     }
 }
