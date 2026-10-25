@@ -64,7 +64,7 @@ Generates an interactive HTML report covering Intune app failures, multi-user de
 | **From**                | From address.                                                                                                                                              |
 | **ExportPath**          | Output file path.                                                                                                                                          |
 | **ShowExcludedDevices** | Also surface devices that were *deliberately* excluded from BitLocker / LAPS policies (via exclude group or assignment filter) as Info-severity rows. Off by default so the report stays focused on actual anomalies. |
-| **DebugMode**           | Enable debug output.                                                                                                                                       |
+| **DebugMode**           | No effect; kept for compatibility. Use -Verbose.                                                                                                           |
 
 Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 
@@ -80,7 +80,7 @@ Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection
 
 Returns the Intune anomalies of the connected tenant as objects, one property per category.
 
-Collects the Windows devices, apps, BitLocker and LAPS state and Settings Catalog policies once, and returns: BitLocker, Laps, Noncompliant, Inactive, DisabledPrimaryUser, MissingAutopilot, MultiUser, AppInstallFailures, DeprecatedSettings and OperatingSystemEditions (rows), plus Warnings and the BitLockerKeysReadable, LapsCredentialsReadable and AppsReadable flags. Get-IntuneAnomaliesReport renders the same object as HTML. Connect first with **Connect-RKGraph**.
+Collects the Windows devices, apps, BitLocker and LAPS state and Settings Catalog policies once, and returns: BitLocker, Laps, Noncompliant, Inactive, DisabledPrimaryUser, MissingAutopilot, MultiUser, AppInstallFailures, DeprecatedSettings and OperatingSystemEditions (rows), plus Warnings and the BitLockerKeysReadable, LapsCredentialsReadable and AppsReadable flags. Get-IntuneAnomaliesReport renders the same object as HTML.
 
 
 | Parameter                | Description                                                                                                         |
@@ -88,6 +88,8 @@ Collects the Windows devices, apps, BitLocker and LAPS state and Settings Catalo
 | **InactiveDays**         | A device whose last Intune sync is older than this many days is inactive. Default 90.                               |
 | **MaxLapsBackupAgeDays** | A LAPS backup older than this many days is stale. Default 60.                                                       |
 | **ShowExcludedDevices**  | Also return devices that a BitLocker or LAPS policy leaves out on purpose (exclude group or filter), as Info rows.  |
+
+Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 
 
 **Examples:**

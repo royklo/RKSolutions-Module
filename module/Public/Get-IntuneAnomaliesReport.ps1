@@ -4,6 +4,7 @@
     Connect first with Connect-RKGraph; this cmdlet uses the existing connection.
 #>
 function Get-IntuneAnomaliesReport {
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'DebugMode', Justification = 'Kept for compatibility')]
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)] [switch] $SendEmail,
@@ -15,6 +16,7 @@ param(
     # so the report stays focused on actual anomalies; intentional exclusions are
     # admin choices, not gaps.
     [Parameter(Mandatory = $false)] [switch] $ShowExcludedDevices,
+    # Kept so existing scripts keep working; has no effect. Use -Verbose for timings.
     [Parameter(Mandatory = $false)] [switch] $DebugMode
 )
 

@@ -88,6 +88,7 @@ Disconnect-RKGraph
 | **Disconnect-RKGraph** | Disconnects and clears the Graph session. |
 | **Get-IntuneEnrollmentFlowsReport** | Generates Intune assignment overview and/or device visualization report. |
 | **Get-IntuneAnomaliesReport** | Generates Intune anomalies report. |
+| **Get-RKIntuneAnomaly** | Returns the Intune anomalies of the connected tenant as objects. |
 | **Get-EntraAdminRolesReport** | Generates Entra admin roles report. |
 | **Get-M365LicenseAssignmentReport** | Generates M365 license assignment report. |
 | **Get-CustomSecurityAttributesReport** | Generates Custom Security Attributes report across users, devices, and apps. |
