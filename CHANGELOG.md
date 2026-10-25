@@ -10,7 +10,7 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 - Added `Get-RKIntuneAnomaly`.
 - Deprecated settings now read setting display names from Microsoft Graph instead of a download.
-- A missing BitLocker, LAPS or app permission is now shown as a notice instead of flagging every device: unreadable BitLocker keys show `KeyEscrowed = Unknown` and unreadable LAPS passwords raise no backup anomaly.
+- A missing BitLocker or LAPS permission is now shown as a notice instead of flagging every device: unreadable BitLocker keys show `KeyEscrowed = Unknown` and unreadable LAPS passwords raise no backup anomaly. A missing app permission leaves the Application Failures tab empty with a notice instead of stopping the report.
 - `Get-IntuneAnomaliesReport -DebugMode` has no effect any more; use `-Verbose`. Progress messages moved to `-Verbose` too.
 - The report no longer stops silently at 10,000 devices or users.
 - Fixed: *Multiple Users* no longer lists devices without an enrollment profile on tenants that have no single-user Autopilot profile.
