@@ -439,6 +439,72 @@ Describe 'Resolvers' {
         @($r.Rows).Application | Should -Be @('C', 'B')
         @($r.Warnings).Message | Should -Be @('w2')
     }
+    It 'Disabled primary user matches the UPN case-insensitively' {
+        $r = InModuleScope RKSolutions {
+            $d = [pscustomobject]@{
+                Devices = @([pscustomobject]@{ Customer = 'T'; DeviceName = 'U1'; PrimaryUser = 'OFF@T'; Serialnumber = 'S'; DeviceManufacturer = 'M'; DeviceModel = 'X' })
+                Users   = @([pscustomobject]@{ id = '1'; userPrincipalName = 'off@t'; accountEnabled = $false })
+            }
+            Resolve-IntuneDisabledPrimaryUsers -Data $d
+        }
+        @($r.Rows).DeviceName | Should -Be @('U1')
+    }
+    It 'Noncompliant without a reason gives one row with Unknown' {
+        $r = InModuleScope RKSolutions {
+            $d = [pscustomobject]@{ Devices = @([pscustomobject]@{ Customer = 'T'; DeviceName = 'N1'; ComplianceStatus = 'noncompliant'; NoncompliantBasedOn = '' }); Warnings = @() }
+            Resolve-IntuneNoncompliantDevices -Data $d
+        }
+        @($r.Rows).Count | Should -Be 1
+        @($r.Rows)[0].NoncompliantBasedOn | Should -Be 'Unknown'
+    }
+    It 'Inactive: a device without LastContact counts as inactive' {
+        $r = InModuleScope RKSolutions {
+            $d = [pscustomobject]@{ Devices = @([pscustomobject]@{ Customer = 'T'; DeviceName = 'Z1'; LastContact = $null }) }
+            Resolve-IntuneInactiveDevices -Data $d -Days 90
+        }
+        @($r.Rows).DeviceName | Should -Be @('Z1')
+    }
+    It 'Resolvers work on a Data object without Warnings' {
+        $r = InModuleScope RKSolutions {
+            $d = [pscustomobject]@{ Devices = @(); Apps = @(); Users = @(); AutopilotProfiles = @() }
+            @(
+                (Resolve-IntuneNoncompliantDevices -Data $d)
+                (Resolve-IntuneAppInstallFailures -Data $d)
+                (Resolve-IntuneMissingAutopilotDevices -Data $d)
+            )
+        }
+        foreach ($x in $r) { @($x.Warnings).Count | Should -Be 0 }
+    }
+    It 'Excluded devices come back as Info rows (BitLocker and LAPS)' {
+        $r = InModuleScope RKSolutions {
+            $policy = [pscustomobject]@{ DisplayName = 'P'; Source = 'Catalog'; Assignments = @(
+                    [pscustomobject]@{ AssignmentType = 'All Devices' }
+                    [pscustomobject]@{ AssignmentType = 'Group (Exclude)'; GroupId = 'g1' }) }
+            $ctx = [pscustomobject]@{
+                EntraDeviceIdByName        = @{}
+                GroupDeviceAadIds          = @{ g1 = [System.Collections.Generic.HashSet[string]]::new([string[]]@('aad1')) }
+                GroupUserUpns              = @{}
+                Filters                    = @{}
+                BitLockerPolicies          = @($policy)
+                BitLockerKeyDeviceIds      = [System.Collections.Generic.HashSet[string]]::new()
+                LapsPolicies               = @($policy)
+                LapsCredentialByDeviceId   = @{}
+                LapsCredentialByDeviceName = @{}
+            }
+            $d = [pscustomobject]@{
+                TenantName         = 'T'
+                Devices            = @([pscustomobject]@{ DeviceName = 'E1'; AzureAdDeviceId = 'aad1'; PrimaryUser = 'u@t'; Serialnumber = 'S'; Encrypted = $false; IsCloudPC = $false })
+                SecurityKeyContext = $ctx
+                Warnings           = @()
+            }
+            @{ BitLocker = (Resolve-IntuneBitLockerAnomalies -Data $d); Laps = (Resolve-IntuneLapsAnomalies -Data $d) }
+        }
+        foreach ($k in 'BitLocker', 'Laps') {
+            @($r[$k].Rows).Count | Should -Be 1
+            @($r[$k].Rows)[0].Severity | Should -Be 'Info'
+            @($r[$k].Rows)[0].Status | Should -BeLike 'Intentionally excluded*'
+        }
+    }
     It 'Deprecated: reads display names from the expanded setting definitions' {
         $r = InModuleScope RKSolutions {
             $policy = [pscustomobject]@{ id = 'p1'; name = 'Pol'; platforms = 'windows10'; technologies = 'mdm'; settings = @(
