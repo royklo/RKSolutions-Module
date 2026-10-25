@@ -21,6 +21,28 @@ Describe 'ConvertTo-RKCoreGraphPath' {
     }
 }
 
+Describe 'Get-RKCoreGraphErrorStatus' {
+    It 'Reads Response.StatusCode' {
+        InModuleScope RKSolutions {
+            $e = [System.Exception]::new('x')
+            $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 404 })
+            Get-RKCoreGraphErrorStatus -ErrorRecord ([System.Management.Automation.ErrorRecord]::new($e, 'id', 'NotSpecified', $null)) | Should -Be 404
+        }
+    }
+    It 'Reads StatusCode from an HttpRequestException' {
+        InModuleScope RKSolutions {
+            $e = [System.Net.Http.HttpRequestException]::new('x', $null, [System.Net.HttpStatusCode]::Forbidden)
+            Get-RKCoreGraphErrorStatus -ErrorRecord ([System.Management.Automation.ErrorRecord]::new($e, 'id', 'NotSpecified', $null)) | Should -Be 403
+        }
+    }
+    It 'Returns 0 without a status' {
+        InModuleScope RKSolutions {
+            $e = [System.Exception]::new('x')
+            Get-RKCoreGraphErrorStatus -ErrorRecord ([System.Management.Automation.ErrorRecord]::new($e, 'id', 'NotSpecified', $null)) | Should -Be 0
+        }
+    }
+}
+
 Describe 'Get-RKCoreBatchBody' {
     It 'Returns the body for 200' {
         InModuleScope RKSolutions {
@@ -51,6 +73,12 @@ Describe 'Module adapters' {
             Mock Invoke-MgGraphRequest -ParameterFilter { $Uri -like '*skip=2' } { [pscustomobject]@{ value = @(3) } }
             Mock Invoke-MgGraphRequest -ParameterFilter { $Uri -notlike '*skip=2' } { [pscustomobject]@{ value = @(1, 2); '@odata.nextLink' = 'https://graph.microsoft.com/beta/x?skip=2' } }
             @(Invoke-RKCoreGraphRequest -Uri 'beta/x' -All) | Should -Be @(1, 2, 3)
+        }
+    }
+    It 'Invoke-RKCoreGraphRequest -All throws when a nextLink repeats' {
+        InModuleScope RKSolutions {
+            Mock Invoke-MgGraphRequest { [pscustomobject]@{ value = @(1); '@odata.nextLink' = 'https://graph.microsoft.com/beta/x?skip=1' } }
+            { Invoke-RKCoreGraphRequest -Uri 'beta/x' -All } | Should -Throw '*same @odata.nextLink*'
         }
     }
     It 'Invoke-RKCoreGraphRequest without -All returns the raw body' {

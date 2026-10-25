@@ -18,7 +18,9 @@ function Invoke-RKCoreGraphRequest {
     if (-not $All) { return Invoke-MgGraphRequest -Method GET -Uri $next -OutputType PSObject -ErrorAction Stop }
 
     $items = [System.Collections.Generic.List[object]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new()
     while ($next) {
+        if (-not $seen.Add($next)) { throw "Graph returned the same @odata.nextLink twice for $Uri." }
         $page = Invoke-MgGraphRequest -Method GET -Uri $next -OutputType PSObject -ErrorAction Stop
         if ($page.PSObject.Properties['value']) { foreach ($item in @($page.value)) { $items.Add($item) } }
         else { $items.Add($page) }

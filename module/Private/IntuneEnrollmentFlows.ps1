@@ -6,7 +6,6 @@ $script:GroupMemberTypeCache = $null
 # Shared helper: convert boolean/null to Yes/No/dash
 $script:ToYesNo = { param($v) if ($null -eq $v) { "-" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
 
-
 # Single source of truth for Graph device $select (Section 8.1)
 $script:ManagedDeviceSelectProperties = @(
     'AadRegistered', 'hardwareInformation', 'ActivationLockBypassCode', 'AndroidSecurityPatchLevel', 'AssignmentFilterEvaluationStatusDetails',

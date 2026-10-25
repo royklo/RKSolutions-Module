@@ -22,7 +22,9 @@ function Get-RKCoreGraphErrorStatus {
     param([Parameter(Mandatory)] [System.Management.Automation.ErrorRecord] $ErrorRecord)
 
     foreach ($ex in @($ErrorRecord.Exception, $ErrorRecord.Exception.InnerException)) {
-        if ($ex -and $ex.PSObject.Properties['Response'] -and $ex.Response -and $ex.Response.StatusCode) { return [int]$ex.Response.StatusCode }
+        if (-not $ex) { continue }
+        if ($ex.PSObject.Properties['Response'] -and $ex.Response -and $ex.Response.StatusCode) { return [int]$ex.Response.StatusCode }
+        if ($ex.PSObject.Properties['StatusCode'] -and $ex.StatusCode) { return [int]$ex.StatusCode }
     }
     0
 }

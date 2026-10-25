@@ -1845,7 +1845,6 @@ function Get-AutopilotProfilesInformation {
 # IntuneEnrollmentFlows.ps1 - load order is enforced in RKSolutions.psm1.
 # ----------------------------------------------------------------------------
 
-
 function Get-BitLockerLapsAssignmentContext {
     <#
         Bulk-fetches all Settings Catalog and legacy device configuration policies that
