@@ -545,3 +545,82 @@ Describe 'Resolvers' {
         @($r.Rows)[0].DetectionSource | Should -Be 'CatalogDisplayName'
     }
 }
+
+Describe 'Unreadable keys, settings fallback and null children' {
+    It 'BitLocker gives Unknown, and no missing-key anomaly, when the keys cannot be read' {
+        $r = InModuleScope RKSolutions {
+            $policy = [pscustomobject]@{ DisplayName = 'P'; Source = 'Catalog'; Assignments = @([pscustomobject]@{ AssignmentType = 'All Devices' }) }
+            $ctx = [pscustomobject]@{
+                EntraDeviceIdByName = @{}; GroupDeviceAadIds = @{}; GroupUserUpns = @{}; Filters = @{}
+                BitLockerPolicies = @($policy); BitLockerKeyDeviceIds = [System.Collections.Generic.HashSet[string]]::new()
+            }
+            $devices = @(
+                [pscustomobject]@{ DeviceName = 'Enc'; AzureAdDeviceId = 'a1'; PrimaryUser = 'u@t'; Serialnumber = 'S1'; Encrypted = $true; IsCloudPC = $false }
+                [pscustomobject]@{ DeviceName = 'Plain'; AzureAdDeviceId = 'a2'; PrimaryUser = 'u@t'; Serialnumber = 'S2'; Encrypted = $false; IsCloudPC = $false })
+            $d = [pscustomobject]@{ TenantName = 'T'; Devices = $devices; SecurityKeyContext = $ctx; Warnings = @(); BitLockerKeysReadable = $false }
+            $d2 = $d.PSObject.Copy(); $d2.BitLockerKeysReadable = $true
+            @{ Unreadable = (Resolve-IntuneBitLockerAnomalies -Data $d); Readable = (Resolve-IntuneBitLockerAnomalies -Data $d2) }
+        }
+        @($r.Readable.Rows | Where-Object DeviceName -eq 'Enc').Status | Should -Be 'Encrypted but no OS-volume key in Entra'
+        @($r.Unreadable.Rows | Where-Object DeviceName -eq 'Enc') | Should -BeNullOrEmpty
+        $plain = @($r.Unreadable.Rows | Where-Object DeviceName -eq 'Plain')
+        $plain.Status | Should -Be 'BitLocker policy assigned but device not encrypted'
+        $plain.KeyEscrowed | Should -Be 'Unknown'
+    }
+    It 'LAPS does not flag a missing or stale backup when the credentials cannot be read' {
+        $r = InModuleScope RKSolutions {
+            $policy = [pscustomobject]@{ DisplayName = 'P'; Source = 'Catalog'; Assignments = @([pscustomobject]@{ AssignmentType = 'All Devices' }) }
+            $ctx = [pscustomobject]@{
+                EntraDeviceIdByName = @{}; GroupDeviceAadIds = @{}; GroupUserUpns = @{}; Filters = @{}
+                LapsPolicies = @($policy); LapsCredentialByDeviceId = @{}; LapsCredentialByDeviceName = @{}
+            }
+            $d = [pscustomobject]@{ TenantName = 'T'; Devices = @([pscustomobject]@{ DeviceName = 'N1'; AzureAdDeviceId = 'a1'; PrimaryUser = 'u@t'; Serialnumber = 'S' }); SecurityKeyContext = $ctx; Warnings = @(); LapsCredentialsReadable = $false }
+            $d2 = $d.PSObject.Copy(); $d2.LapsCredentialsReadable = $true
+            @{ Unreadable = (Resolve-IntuneLapsAnomalies -Data $d); Readable = (Resolve-IntuneLapsAnomalies -Data $d2) }
+        }
+        @($r.Readable.Rows)[0].Status | Should -BeLike '*no credential backed up*'
+        @($r.Unreadable.Rows) | Should -BeNullOrEmpty
+    }
+    It 'Get-BitLockerLapsAssignmentContext reads the settings of a policy directly when the batch answers 400' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Get-DetailedPolicyAssignments { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -eq 'beta/deviceManagement/configurationPolicies' } { [pscustomobject]@{ id = 'p1'; name = 'BitLocker' } }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like '*configurationPolicies/p1/settings*' -and $All } {
+                [pscustomobject]@{ settingInstance = [pscustomobject]@{ settingDefinitionId = 'device_vendor_msft_bitlocker_requiredeviceencryption' } }
+            }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/settings?*' } {
+                [pscustomobject]@{ Id = 'cps:p1'; Status = 400; Body = $null }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
+            @($ctx.ConfigurationPolicies[0].settings).Count | Should -Be 1
+            @($ctx.BitLockerPolicies.Id) | Should -Be @('p1')
+        }
+    }
+    It 'Get-RKCoreBatchBody puts the Graph error message in the throw' {
+        { InModuleScope RKSolutions {
+            $w = [System.Collections.Generic.List[object]]::new()
+            Get-RKCoreBatchBody -Response ([pscustomobject]@{ Id = 'a'; Status = 400; Body = [pscustomobject]@{ error = [pscustomobject]@{ message = 'Resource not valid' } } }) -What 'policy p1' -Area 'BitLocker' -Warnings $w
+        } } | Should -Throw '*400*Resource not valid*'
+    }
+    It 'Deprecated: a group setting whose children are null does not throw' {
+        $r = InModuleScope RKSolutions {
+            $si = '{"@odata.type":"#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance","settingDefinitionId":"x_group","groupSettingCollectionValue":[{"children":null}]}' | ConvertFrom-Json
+            $si2 = '{"@odata.type":"#microsoft.graph.deviceManagementConfigurationGroupSettingInstance","settingDefinitionId":"y_group","groupSettingValue":{"children":null}}' | ConvertFrom-Json
+            $policy = [pscustomobject]@{ id = 'p'; name = 'P'; settings = @([pscustomobject]@{ settingInstance = $si }, [pscustomobject]@{ settingInstance = $si2 }) }
+            $d = [pscustomobject]@{ TenantName = 'T'; Warnings = @(); SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @($policy) } }
+            Resolve-IntuneDeprecatedAnomalies -Data $d
+        }
+        @($r.Rows).Count | Should -Be 0
+    }
+}
+
+Describe 'General warnings' {
+    It 'Inactive carries the General warnings, such as a device that could not be processed' {
+        $r = InModuleScope RKSolutions {
+            Resolve-IntuneInactiveDevices -Data ([pscustomobject]@{ Devices = @(); Warnings = @([pscustomobject]@{ Area = 'General'; Message = 'Device X could not be processed' }, [pscustomobject]@{ Area = 'Laps'; Message = 'other' }) })
+        }
+        @($r.Warnings.Message) | Should -Be @('Device X could not be processed')
+    }
+}

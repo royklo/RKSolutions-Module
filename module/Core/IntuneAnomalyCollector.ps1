@@ -381,7 +381,7 @@ function Get-AllDeviceData {
                 NoncompliantAlert          = (@($uniqueRules | Where-Object { $_ -notin $FilteredForAlerting } | ForEach-Object { ConvertTo-ComplianceSettingFriendlyName $_ }) | Select-Object -Unique) -join ', '
             })
         } catch {
-            Write-Warning "Error processing device $($DeviceData.DeviceName): $_"
+            $Warnings.Add([pscustomobject]@{ Area = 'General'; Message = "Device $($DeviceData.DeviceName) could not be processed and is left out of every category: $($_.Exception.Message)" })
             continue
         }
     }
@@ -405,7 +405,7 @@ function Get-IntuneAppData {
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [string] $TenantName,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $TenantName,
         [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]] $Warnings
     )
 
@@ -531,11 +531,15 @@ function Get-BitLockerLapsAssignmentContext {
                 Url = "beta/deviceManagement/configurationPolicies/$($p.id)/settings?`$expand=settingDefinitions"
             }
         }
+        $settingsUrlByPolicyId = @{}
+        foreach ($r in $settingsRequests) { $settingsUrlByPolicyId[($r.Id -replace '^cps:', '')] = $r.Url }
         $settingsResponses = Invoke-RKCoreGraphBatch -Requests @($settingsRequests)
         $settingsByPolicyId = @{}
         foreach ($resp in $settingsResponses) {
-            $body = Get-RKCoreBatchBody -Response $resp -What "the settings of policy $($resp.Id -replace '^cps:', '')" -Area 'Settings', 'BitLocker', 'Laps' -Warnings $Warnings; if (-not $body) { continue }
             $policyId = $resp.Id -replace '^cps:', ''
+            # Graph's $batch sometimes answers 400 for this sub-route although the single GET works: retry it directly (a failure there throws).
+            if ($resp.Status -notin 200, 404) { $settingsByPolicyId[$policyId] = @(Invoke-RKCoreGraphRequest -Uri $settingsUrlByPolicyId[$policyId] -All); continue }
+            $body = Get-RKCoreBatchBody -Response $resp -What "the settings of policy $policyId" -Area 'Settings', 'BitLocker', 'Laps' -Warnings $Warnings; if (-not $body) { continue }
             $settings = @($body.value)
             # $expand can make Graph return smaller pages: read the rest, so a policy with many settings is complete.
             if ($body.'@odata.nextLink') { $settings += @(Invoke-RKCoreGraphRequest -Uri $body.'@odata.nextLink' -All) }

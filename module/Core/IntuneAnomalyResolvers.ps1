@@ -181,14 +181,14 @@ function Select-RKAnomalyWarning {
 }
 
 function Resolve-IntuneInactiveDevices {
-    <# .SYNOPSIS Windows devices whose last Intune sync is older than -Days (oldest first). #>
+    <# .SYNOPSIS Windows devices whose last Intune sync is older than -Days (oldest first). Also carries the General warnings (a device that could not be processed). #>
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Data, [int] $Days = 90)
     $cutoff = (Get-Date).AddDays(-$Days)
     # Same test as the report always used: a device without LastContact also counts as inactive.
     $rows = @($Data.Devices | Where-Object { $_.LastContact -lt $cutoff } | Sort-Object LastContact |
             Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel, LastContact)
-    [pscustomobject]@{ Rows = $rows; Warnings = @() }
+    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'General' }
 }
 
 function Resolve-IntuneDisabledPrimaryUsers {
@@ -258,6 +258,8 @@ function Resolve-IntuneBitLockerAnomalies {
     param([Parameter(Mandatory)] $Data, [string] $TenantName)
     if (-not $TenantName) { $TenantName = $Data.TenantName }
     $Context = $Data.SecurityKeyContext
+    # Only an explicit $false changes anything: without the keys, "no key in Entra" cannot be told from "not readable".
+    $keysReadable = $Data.BitLockerKeysReadable -ne $false
     # Cloud PCs have platform-managed disk encryption.
     $Devices = @($Data.Devices | Where-Object { -not $_.IsCloudPC })
     $out = [System.Collections.Generic.List[PSObject]]::new()
@@ -299,7 +301,7 @@ function Resolve-IntuneBitLockerAnomalies {
         }
         elseif (-not $isEncrypted -and $applied.Count -eq 0)  { $status = 'Device not encrypted and no BitLocker policy assigned';     $severity = 'Critical' }
         elseif ($applied.Count -eq 0)                         { $status = 'No BitLocker policy assigned';                              $severity = 'Warning' }
-        elseif ($isEncrypted -and -not $hasKey)               { $status = 'Encrypted but no OS-volume key in Entra';                   $severity = 'Critical' }
+        elseif ($isEncrypted -and -not $hasKey -and $keysReadable) { $status = 'Encrypted but no OS-volume key in Entra';                   $severity = 'Critical' }
         elseif (-not $isEncrypted)                            { $status = 'BitLocker policy assigned but device not encrypted';        $severity = 'Critical' }
         else                                                  { continue }   # Healthy.
 
@@ -310,7 +312,7 @@ function Resolve-IntuneBitLockerAnomalies {
             Serialnumber       = $d.Serialnumber
             IsEncrypted        = if ($isEncrypted) { 'Yes' } else { 'No' }
             AppliedPolicies    = if ($applied.Count -gt 0) { ($applied | ForEach-Object { $_.PolicyName }) -join '; ' } else { ($excluded | ForEach-Object { "$($_.PolicyName) [$($_.Reason)]" }) -join '; ' }
-            KeyEscrowed        = if ($hasKey) { 'Yes' } else { 'No' }
+            KeyEscrowed        = if (-not $keysReadable) { 'Unknown' } elseif ($hasKey) { 'Yes' } else { 'No' }
             Severity           = $severity
             Status             = $status
         })
@@ -335,6 +337,8 @@ function Resolve-IntuneLapsAnomalies {
     $Devices = @($Data.Devices)
     $out = [System.Collections.Generic.List[PSObject]]::new()
     $cutoff = (Get-Date).AddDays(-$MaxBackupAgeDays)
+    # Only an explicit $false changes anything: without the credentials, "no backup" cannot be told from "not readable".
+    $credentialsReadable = $Data.LapsCredentialsReadable -ne $false
 
     foreach ($d in $Devices) {
         $aadId = Resolve-DeviceAzureAdDeviceId -Device $d -Context $Context
@@ -366,7 +370,7 @@ function Resolve-IntuneLapsAnomalies {
             $severity = 'Info'
         }
         elseif ($applied.Count -eq 0)                                    { $status = 'No Entra-backed LAPS policy assigned';                          $severity = 'Warning' }
-        elseif (-not $entry)                                             { $status = 'LAPS policy assigned but no credential backed up to Entra';     $severity = 'Critical' }
+        elseif (-not $entry -and $credentialsReadable)                   { $status = 'LAPS policy assigned but no credential backed up to Entra';     $severity = 'Critical' }
         elseif ($lastBackup -and $lastBackup -lt $cutoff)                { $status = "LAPS backup stale (> $MaxBackupAgeDays days, rotation may be stalled)"; $severity = 'Warning' }
         else { continue }   # Healthy.
 
@@ -488,13 +492,13 @@ function Get-IntuneSettingDeprecations {
     $type = [string]$SettingInstance.'@odata.type'
     if ($type -like '*groupSettingCollectionInstance*') {
         foreach ($child in @($SettingInstance.groupSettingCollectionValue)) {
-            foreach ($childSetting in @($child.children)) {
+            foreach ($childSetting in @($child.children | Where-Object { $_ })) {
                 foreach ($h in (Get-IntuneSettingDeprecations -SettingInstance $childSetting -Catalog $Catalog)) { $hits.Add($h) }
             }
         }
     }
     elseif ($type -like '*groupSettingInstance*') {
-        foreach ($childSetting in @($SettingInstance.groupSettingValue.children)) {
+        foreach ($childSetting in @($SettingInstance.groupSettingValue.children | Where-Object { $_ })) {
             foreach ($h in (Get-IntuneSettingDeprecations -SettingInstance $childSetting -Catalog $Catalog)) { $hits.Add($h) }
         }
     }

@@ -33,7 +33,7 @@ function Get-RKCoreBatchBody {
     <#
     .SYNOPSIS
         The body of a required batch response. 404 (an object deleted or referenced by a stale assignment) is
-        empty with a warning per area; any other status other than 200 throws.
+        empty with a warning per area; any other status other than 200 throws (with Graph's error message when there is one).
     #>
     [CmdletBinding()]
     param(
@@ -48,5 +48,6 @@ function Get-RKCoreBatchBody {
         foreach ($a in $Area) { $Warnings.Add([pscustomobject]@{ Area = $a; Message = "$What was not found (404) and is skipped." }) }
         return $null
     }
-    throw "Reading $What from Microsoft Graph failed with status $($Response.Status)."
+    $detail = if ($Response.Body.error.message) { ": $($Response.Body.error.message)" } else { '.' }
+    throw "Reading $What from Microsoft Graph failed with status $($Response.Status)$detail"
 }
