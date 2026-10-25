@@ -617,11 +617,19 @@ Describe 'Unreadable keys, settings fallback and null children' {
 }
 
 Describe 'General warnings' {
-    It 'Inactive carries the General warnings, such as a device that could not be processed' {
+    It 'Every device check carries the General warnings, the app and deprecated checks do not' {
         $r = InModuleScope RKSolutions {
-            Resolve-IntuneInactiveDevices -Data ([pscustomobject]@{ Devices = @(); Warnings = @([pscustomobject]@{ Area = 'General'; Message = 'Device X could not be processed' }, [pscustomobject]@{ Area = 'Laps'; Message = 'other' }) })
+            $d = [pscustomobject]@{ TenantName = 'T'; Devices = @(); Users = @(); Apps = @(); AutopilotProfiles = @(); Warnings = @([pscustomobject]@{ Area = 'General'; Message = 'Device X could not be processed' }, [pscustomobject]@{ Area = 'Zzz'; Message = 'other' })
+                SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @(); BitLockerPolicies = @(); LapsPolicies = @(); BitLockerKeyDeviceIds = [System.Collections.Generic.HashSet[string]]::new(); LapsCredentialByDeviceId = @{}; LapsCredentialByDeviceName = @{}; EntraDeviceIdByName = @{}; GroupDeviceAadIds = @{}; GroupUserUpns = @{}; Filters = @{} } }
+            $out = @{}
+            foreach ($f in 'BitLocker', 'Laps', 'Noncompliant', 'Inactive', 'DisabledPrimaryUsers', 'MissingAutopilotDevices', 'MultiUserDevices', 'AppInstallFailures', 'Deprecated') {
+                $cmd = (Get-Command "Resolve-Intune*$f*" | Select-Object -First 1).Name
+                $out[$f] = @((& $cmd -Data $d).Warnings.Message)
+            }
+            $out
         }
-        @($r.Warnings.Message) | Should -Be @('Device X could not be processed')
+        foreach ($f in 'BitLocker', 'Laps', 'Noncompliant', 'Inactive', 'DisabledPrimaryUsers', 'MissingAutopilotDevices', 'MultiUserDevices') { $r[$f] | Should -Be @('Device X could not be processed') -Because $f }
+        foreach ($f in 'AppInstallFailures', 'Deprecated') { $r[$f] | Should -BeNullOrEmpty -Because $f }
     }
 }
 
@@ -694,5 +702,32 @@ Describe 'Get-RKIntuneAnomaly' {
     It 'throws without a Graph context' {
         Mock -ModuleName RKSolutions Get-MgContext { $null }
         { Get-RKIntuneAnomaly } | Should -Throw '*Connect-RKGraph*'
+    }
+}
+
+Describe 'Cached policies and failed batch requests' {
+    It 'Get-BitLockerLapsAssignmentContext leaves the policy objects the adapter returned untouched' {
+        InModuleScope RKSolutions {
+            $script:cached = [pscustomobject]@{ id = 'p1'; name = 'BitLocker' }
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Get-DetailedPolicyAssignments { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -eq 'beta/deviceManagement/configurationPolicies' } { $script:cached }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/settings?*' } {
+                $s = [pscustomobject]@{ settingInstance = [pscustomobject]@{ settingDefinitionId = 'device_vendor_msft_bitlocker_requiredeviceencryption' } }
+                [pscustomobject]@{ Id = 'cps:p1'; Status = 200; Body = [pscustomobject]@{ value = @($s) } }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
+            $script:cached.PSObject.Properties['settings'] | Should -BeNullOrEmpty
+            @($ctx.ConfigurationPolicies[0].settings).Count | Should -Be 1
+            @($ctx.BitLockerPolicies.Id) | Should -Be @('p1')
+        }
+    }
+    It 'Invoke-RKCoreGraphBatch carries the error text of a failed request into Body.error.message' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKGraphBatch { [pscustomobject]@{ Id = 'a'; Status = 0; Body = $null; Headers = $null; Error = 'connection reset' } }
+            $r = @(Invoke-RKCoreGraphBatch -Requests @([pscustomobject]@{ Id = 'a'; Url = 'beta/x' }))
+            $r[0].Body.error.message | Should -Be 'connection reset'
+        }
     }
 }

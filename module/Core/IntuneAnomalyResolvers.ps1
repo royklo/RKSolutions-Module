@@ -199,7 +199,7 @@ function Resolve-IntuneDisabledPrimaryUsers {
     foreach ($u in $Data.Users) { if ($u.accountEnabled -eq $false -and $u.userPrincipalName) { [void]$disabled.Add([string]$u.userPrincipalName) } }
     $rows = @($Data.Devices | Where-Object { $_.PrimaryUser -and $disabled.Contains([string]$_.PrimaryUser) } | Sort-Object DeviceName |
             Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel)
-    [pscustomobject]@{ Rows = $rows; Warnings = @() }
+    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'General' }
 }
 
 function Resolve-IntuneMissingAutopilotDevices {
@@ -208,7 +208,7 @@ function Resolve-IntuneMissingAutopilotDevices {
     param([Parameter(Mandatory)] $Data)
     $rows = @($Data.Devices | Where-Object { -not $_.IsCloudPC -and $_.DeviceHashUploaded -eq $false -and -not $_.DeviceAssociated } | Sort-Object DeviceName |
             Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel)
-    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Autopilot' }
+    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Autopilot', 'General' }
 }
 
 function Resolve-IntuneMultiUserDevices {
@@ -218,7 +218,7 @@ function Resolve-IntuneMultiUserDevices {
     $singleUser = @($Data.AutopilotProfiles | Where-Object { $_.outOfBoxExperienceSettings.deviceUsageType -eq 'SingleUser' } | ForEach-Object { $_.displayName })
     $rows = @($Data.Devices | Where-Object { $_.usersLoggedOnCount -gt 1 -and $_.EnrollmentProfile -in $singleUser } | Sort-Object DeviceName |
             Select-Object Customer, DeviceName, PrimaryUser, EnrollmentProfile, usersLoggedOnCount, usersLoggedOnIds)
-    [pscustomobject]@{ Rows = $rows; Warnings = @() }
+    [pscustomobject]@{ Rows = $rows; Warnings = Select-RKAnomalyWarning -Data $Data -Area 'General' }
 }
 
 function Resolve-IntuneNoncompliantDevices {
@@ -233,7 +233,7 @@ function Resolve-IntuneNoncompliantDevices {
             $rows.Add([pscustomobject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = $reason; NoncompliantAlert = $device.NoncompliantAlert })
         }
     }
-    [pscustomobject]@{ Rows = $rows.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Compliance' }
+    [pscustomobject]@{ Rows = $rows.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Compliance', 'General' }
 }
 
 function Resolve-IntuneAppInstallFailures {
@@ -317,7 +317,7 @@ function Resolve-IntuneBitLockerAnomalies {
             Status             = $status
         })
     }
-    [pscustomobject]@{ Rows = $out.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'BitLocker' }
+    [pscustomobject]@{ Rows = $out.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'BitLocker', 'General' }
 }
 
 function Resolve-IntuneLapsAnomalies {
@@ -387,7 +387,7 @@ function Resolve-IntuneLapsAnomalies {
             Status             = $status
         })
     }
-    [pscustomobject]@{ Rows = $out.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Laps' }
+    [pscustomobject]@{ Rows = $out.ToArray(); Warnings = Select-RKAnomalyWarning -Data $Data -Area 'Laps', 'General' }
 }
 
 # ----------------------------------------------------------------------------

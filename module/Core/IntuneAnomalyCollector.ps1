@@ -545,13 +545,15 @@ function Get-BitLockerLapsAssignmentContext {
             if ($body.'@odata.nextLink') { $settings += @(Invoke-RKCoreGraphRequest -Uri $body.'@odata.nextLink' -All) }
             $settingsByPolicyId[$policyId] = $settings
         }
-        # Attach settings back onto each policy so the existing loop below stays unchanged.
-        foreach ($p in $configPolicies) {
+        # Attach settings to copies, so the objects the adapter returned (possibly a shared cache) stay untouched.
+        $configPolicies = @(foreach ($p in $configPolicies) {
             $s = $null
             if ($settingsByPolicyId.ContainsKey($p.id)) { $s = $settingsByPolicyId[$p.id] }
-            if ($p.PSObject.Properties['settings']) { $p.settings = $s }
-            else { $p | Add-Member -NotePropertyName settings -NotePropertyValue $s -Force }
-        }
+            $copy = $p.PSObject.Copy()
+            if ($copy.PSObject.Properties['settings']) { $copy.settings = $s }
+            else { $copy | Add-Member -NotePropertyName settings -NotePropertyValue $s -Force }
+            $copy
+        })
         $swSet.Stop()
         Write-Verbose ("[BitLockerLaps] Settings batch-fetch: {0:N2}s ({1} policies)" -f $swSet.Elapsed.TotalSeconds, $configPolicies.Count)
     }

@@ -62,7 +62,10 @@ function Invoke-RKCoreGraphBatch {
     }
     foreach ($version in $byVersion.Keys) {
         foreach ($response in (Invoke-RKGraphBatch -Requests $byVersion[$version].ToArray() -GraphVersion $version -Activity 'Reading Intune data from Microsoft Graph')) {
-            [pscustomobject]@{ Id = [string]$response.Id; Status = [int]$response.Status; Body = $response.Body }
+            # A request that failed without an answer from Graph has no Body but an Error: give it the shape Get-RKCoreBatchBody reads.
+            $body = $response.Body
+            if ($null -eq $body -and $response.PSObject.Properties['Error'] -and $response.Error) { $body = [pscustomobject]@{ error = [pscustomobject]@{ message = [string]$response.Error } } }
+            [pscustomobject]@{ Id = [string]$response.Id; Status = [int]$response.Status; Body = $body }
         }
     }
 }
