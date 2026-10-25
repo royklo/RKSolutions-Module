@@ -69,6 +69,7 @@ Export-ModuleMember -Function @(
     'Disconnect-RKGraph',
     'Get-IntuneEnrollmentFlowsReport',
     'Get-IntuneAnomaliesReport',
+    'Get-RKIntuneAnomaly',
     'Get-EntraAdminRolesReport',
     'Get-M365LicenseAssignmentReport',
     'Get-CustomSecurityAttributesReport'

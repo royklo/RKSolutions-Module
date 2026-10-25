@@ -26,6 +26,8 @@ function New-IntuneAnomaliesHTMLReport {
         [Parameter(Mandatory = $false)]
         [array]$Report_DeprecatedSettings,
         [Parameter(Mandatory = $false)]
+        [string[]]$Notices,
+        [Parameter(Mandatory = $false)]
         [string]$ExportPath
     )
 
@@ -271,8 +273,15 @@ function New-IntuneAnomaliesHTMLReport {
             </div>
 "@
 
+    $noticesHtml = ''
+    if ($Notices) {
+        $noticeItems = ($Notices | ForEach-Object { '<li>' + [System.Net.WebUtility]::HtmlEncode($_) + '</li>' }) -join ''
+        $noticesHtml = "<div class=`"rk-tab-intro`"><strong>Notes from this run:</strong><ul>$noticeItems</ul></div>"
+    }
+
     # Build body content HTML (tabs + panels + filter containers + tables + script)
     $bodyContentHtml = @"
+    $noticesHtml
     <!-- Tab Navigation -->
     <div class="rk-tabs">
         <button class="rk-tab active" data-target="panel-app-failures">Application Failures</button>

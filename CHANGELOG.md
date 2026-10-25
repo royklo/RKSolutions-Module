@@ -6,6 +6,14 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 
 
+## Unreleased
+
+- Added `Get-RKIntuneAnomaly`.
+- App install failures now read per-app install summaries (GET) and the full app list.
+- Deprecated settings now read setting display names from Microsoft Graph instead of a download.
+- A missing BitLocker, LAPS or app permission is now shown as a notice instead of flagging every device.
+- Graph errors in required reads now stop the report instead of being silently ignored.
+
 ## [1.2.2] - 2026-09-24
 
 Patch release for the Intune Anomalies report.
