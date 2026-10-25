@@ -278,3 +278,110 @@ Describe 'Collector error kinds' {
         }
     }
 }
+
+Describe 'Collector logic' {
+    It 'Get-AllDeviceData returns nothing, and throws nothing, for a tenant without devices' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            $w = [System.Collections.Generic.List[object]]::new()
+            @(Get-AllDeviceData -Users @() -TenantName '' -Warnings $w).Count | Should -Be 0
+            $w.Count | Should -Be 0
+        }
+    }
+    It 'Get-AllDeviceData asks once for the settingStates of a policy state listed twice' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceManagement/managedDevices?*' } {
+                [pscustomobject]@{ id = 'd1'; deviceName = 'PC1'; serialNumber = 'S1'; isEncrypted = $true; complianceState = 'noncompliant'; managementAgent = 'mdm' }
+            }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/deviceCompliancePolicyStates' } {
+                $state = [pscustomobject]@{ id = 'ps1'; state = 'nonCompliant' }
+                [pscustomobject]@{ Id = 'ps:d1'; Status = 200; Body = [pscustomobject]@{ value = @($state, $state) } }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $null = Get-AllDeviceData -Users @() -TenantName 'T' -Warnings $w
+            Should -Invoke Invoke-RKCoreGraphBatch -Times 1 -Exactly -ParameterFilter {
+                (@($Requests.Url) -join '|') -eq 'beta/deviceManagement/managedDevices/d1/deviceCompliancePolicyStates/ps1/settingStates'
+            }
+        }
+    }
+    It 'Get-AllDeviceData skips the settingStates of a device that fails more than 10 policies, and counts it' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceManagement/managedDevices?*' } {
+                [pscustomobject]@{ id = 'd2'; deviceName = 'PC2'; serialNumber = 'S2'; isEncrypted = $true; complianceState = 'noncompliant'; managementAgent = 'mdm' }
+            }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/deviceCompliancePolicyStates' } {
+                [pscustomobject]@{ Id = 'ps:d2'; Status = 200; Body = [pscustomobject]@{ value = @(1..11 | ForEach-Object { [pscustomobject]@{ id = "s$_"; state = 'nonCompliant' } }) } }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $null = Get-AllDeviceData -Users @() -TenantName 'T' -Warnings $w
+            Should -Invoke Invoke-RKCoreGraphBatch -Times 0 -Exactly -ParameterFilter { @($Requests.Url) -like '*/settingStates' }
+            @($w | Where-Object { $_.Area -eq 'Compliance' -and $_.Message -like 'The compliance reasons of 1 device(s)*' }).Count | Should -Be 1
+        }
+    }
+    It 'Get-BitLockerLapsAssignmentContext keeps Entra-backed LAPS policies (_1), not on-premises ones (_2), and BitLocker policies' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Get-DetailedPolicyAssignments { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -eq 'beta/deviceManagement/configurationPolicies' } {
+                [pscustomobject]@{ id = 'p1'; name = 'LAPS Entra' }
+                [pscustomobject]@{ id = 'p2'; name = 'LAPS AD' }
+                [pscustomobject]@{ id = 'p3'; name = 'BitLocker' }
+            }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/settings?*' } {
+                foreach ($p in @{ p1 = 1; p2 = 2 }.GetEnumerator()) {
+                    $choice = [pscustomobject]@{ value = "device_vendor_msft_laps_policies_backupdirectory_$($p.Value)" }
+                    $setting = [pscustomobject]@{ settingInstance = [pscustomobject]@{ settingDefinitionId = 'device_vendor_msft_laps_policies_backupdirectory'; choiceSettingValue = $choice } }
+                    [pscustomobject]@{ Id = "cps:$($p.Key)"; Status = 200; Body = [pscustomobject]@{ value = @($setting) } }
+                }
+                $bitLocker = [pscustomobject]@{ settingInstance = [pscustomobject]@{ settingDefinitionId = 'device_vendor_msft_bitlocker_requiredeviceencryption' } }
+                [pscustomobject]@{ Id = 'cps:p3'; Status = 200; Body = [pscustomobject]@{ value = @($bitLocker) } }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
+            @($ctx.LapsPolicies.Id) | Should -Be @('p1')
+            @($ctx.BitLockerPolicies.Id) | Should -Be @('p3')
+        }
+    }
+    It 'Get-BitLockerLapsAssignmentContext follows the nextLink of a group-members page once and adds its members' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -eq 'beta/deviceManagement/deviceConfigurations' } {
+                [pscustomobject]@{ id = 'c1'; displayName = 'BitLocker'; '@odata.type' = '#microsoft.graph.windows10EndpointProtectionConfiguration' }
+            }
+            Mock Get-DetailedPolicyAssignments { [pscustomobject]@{ GroupId = 'g1' } }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/transitiveMembers/*' } {
+                $next = 'https://graph.microsoft.com/v1.0/groups/g1/transitiveMembers/microsoft.graph.device?$skiptoken=x'
+                [pscustomobject]@{ Id = 'gd:g1'; Status = 200; Body = [pscustomobject]@{ value = @([pscustomobject]@{ id = 'm1'; deviceId = 'dev1' }); '@odata.nextLink' = $next } }
+                [pscustomobject]@{ Id = 'gu:g1'; Status = 200; Body = [pscustomobject]@{ value = @() } }
+            }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like '*skiptoken=x' } { [pscustomobject]@{ id = 'm2'; deviceId = 'dev2' } }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
+            Should -Invoke Invoke-RKCoreGraphRequest -Times 1 -Exactly -ParameterFilter { $Uri -like '*skiptoken=x' -and $All }
+            @($ctx.GroupDeviceAadIds['g1'] | Sort-Object) | Should -Be @('dev1', 'dev2')
+        }
+    }
+    It 'Get-BitLockerLapsAssignmentContext marks the LAPS credentials unreadable on 403' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'v1.0/directory/deviceLocalCredentials*' } {
+                $e = [System.Exception]::new('http 403')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
+                throw $e
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
+            $ctx.LapsCredentialsReadable | Should -BeFalse
+            $ctx.LapsCredentialsError | Should -Be 'http 403'
+            $ctx.BitLockerKeysReadable | Should -BeTrue
+        }
+    }
+}

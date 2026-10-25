@@ -3,7 +3,7 @@ function Get-AllDeviceData {
     param(
         # Entra member users (id, userPrincipalName), for the logged-on users lookup.
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Users,
-        [Parameter(Mandatory)] [string] $TenantName,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $TenantName,
         [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]] $Warnings
     )
 
@@ -117,7 +117,7 @@ function Get-AllDeviceData {
     $swStep = [System.Diagnostics.Stopwatch]::StartNew()
     $AllDeviceData = @(Invoke-RKCoreGraphRequest -Uri "beta/deviceManagement/managedDevices?`$filter=operatingSystem eq 'Windows'&`$select=$($Properties -join ',')" -All)
     #filter out managed by MDE
-    $AllDeviceData = $AllDeviceData | Where-Object { $_.managementAgent -ne "msSense" }
+    $AllDeviceData = @($AllDeviceData | Where-Object { $_.managementAgent -ne "msSense" })
     $swStep.Stop()
     Write-Verbose ("[Get-AllDeviceData] Managed devices fetch: {0:N2}s ({1} devices)" -f $swStep.Elapsed.TotalSeconds, $AllDeviceData.Count)
 
@@ -359,6 +359,7 @@ function Get-AllDeviceData {
                 LastContact                = $DeviceProperties.LastSyncDateTime
                 DeviceHashUploaded         = $HashUploaded
                 DeviceAssociated           = [bool]($DeviceData.SerialNumber -and $CorporateIdentifierSerials.Contains($DeviceData.SerialNumber))
+                # Only looked up for devices that BitLocker or Autopilot would flag: $false means "not a Cloud PC, or not looked up".
                 IsCloudPC                  = $CloudPcIds.Contains([string]$DeviceData.id)
                 AutopilotGroupTag          = $AutopilotInfo.groupTag
                 AutopilotAssignedUser      = if ($AutopilotInfo.userprincipalname) { $AutopilotInfo.userprincipalname } else { $null }
@@ -512,10 +513,10 @@ function Get-BitLockerLapsAssignmentContext {
     $context.Filters = $script:AllFilters
 
     # 2. Discover Settings Catalog policies that contain BitLocker or LAPS settings.
-    #    Two-step pattern: list policies (small payload, fits in 1-2 pages) then $batch-fetch
-    #    /settings per policy. Avoids Graph hard-capping page size when $expand=settings is used
-    #    (observed ~1-2 policies per page on cosmos-backed tenants); batch sub-requests execute
-    #    server-side in parallel, so ~75 policies finish in ~4 batched round trips.
+    #    Two-step pattern: list policies (small payload) then fetch /settings per policy. Avoids Graph
+    #    hard-capping page size when $expand=settings is used on the list (observed ~1-2 policies per
+    #    page on cosmos-backed tenants). The settings requests go through Invoke-RKCoreGraphBatch: the
+    #    module batches them, the pack sends them one by one.
     Write-Verbose '  Discovering Settings Catalog policies (BitLocker / LAPS)...'
     $swCfg = [System.Diagnostics.Stopwatch]::StartNew()
     $configPolicies = @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/configurationPolicies' -All)
@@ -533,7 +534,7 @@ function Get-BitLockerLapsAssignmentContext {
         $settingsResponses = Invoke-RKCoreGraphBatch -Requests @($settingsRequests)
         $settingsByPolicyId = @{}
         foreach ($resp in $settingsResponses) {
-            $body = Get-RKCoreBatchBody -Response $resp -What "the settings of policy $($resp.Id -replace '^cps:', '')" -Area 'Settings' -Warnings $Warnings; if (-not $body) { continue }
+            $body = Get-RKCoreBatchBody -Response $resp -What "the settings of policy $($resp.Id -replace '^cps:', '')" -Area 'Settings', 'BitLocker', 'Laps' -Warnings $Warnings; if (-not $body) { continue }
             $policyId = $resp.Id -replace '^cps:', ''
             $settings = @($body.value)
             # $expand can make Graph return smaller pages: read the rest, so a policy with many settings is complete.
@@ -742,7 +743,7 @@ function Get-BitLockerLapsAssignmentContext {
     #    has no azureADDeviceId of its own (rare, but seen on partially-enrolled devices).
     Write-Verbose '  Building Entra device name -> deviceId safety map...'
     try {
-        $entraDevices = @(Invoke-RKCoreGraphRequest -Uri 'v1.0/devices?$select=deviceId,displayName' -All)
+        $entraDevices = @(Invoke-RKCoreGraphRequest -Uri 'v1.0/devices?$top=999&$select=deviceId,displayName' -All)
         foreach ($ed in $entraDevices) {
             if ($ed.deviceId -and $ed.displayName) {
                 $context.EntraDeviceIdByName[([string]$ed.displayName).ToLowerInvariant()] = [string]$ed.deviceId
@@ -773,7 +774,7 @@ function Get-RKIntuneAnomalyData {
 
     $organization = @(Invoke-RKCoreGraphRequest -Uri 'v1.0/organization?$select=id,displayName' -All)[0]
     $tenantName = [string]$organization.displayName
-    $users = @(Invoke-RKCoreGraphRequest -Uri 'beta/users?$select=id,userPrincipalName,userType,accountEnabled' -All | Where-Object { $_.userType -eq 'Member' })
+    $users = @(Invoke-RKCoreGraphRequest -Uri 'beta/users?$top=999&$select=id,userPrincipalName,userType,accountEnabled' -All | Where-Object { $_.userType -eq 'Member' })
     $devices = @(Get-AllDeviceData -Users $users -TenantName $tenantName -Warnings $warnings)
     $profiles = @(Get-AutopilotProfilesInformation)
     $context = Get-BitLockerLapsAssignmentContext -Warnings $warnings
