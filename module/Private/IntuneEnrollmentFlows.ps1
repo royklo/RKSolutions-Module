@@ -1,20 +1,11 @@
 # Intune Enrollment Flows - Private helpers
 
 $ErrorActionPreference = 'Stop'
-$script:AllFilters = @{}
-$script:AllGroups = @{}
 $script:GroupMemberTypeCache = $null
 
 # Shared helper: convert boolean/null to Yes/No/dash
 $script:ToYesNo = { param($v) if ($null -eq $v) { "-" } elseif ($v -eq $true) { "Yes" } elseif ($v -eq $false) { "No" } else { $v.ToString() } }
 
-# Shared lookup tables for OData assignment type <-> friendly name
-$script:ODataToFriendly = @{
-    '#microsoft.graph.allDevicesAssignmentTarget'         = 'All Devices'
-    '#microsoft.graph.allLicensedUsersAssignmentTarget'   = 'All Users'
-    '#microsoft.graph.groupAssignmentTarget'              = 'Group (Include)'
-    '#microsoft.graph.exclusionGroupAssignmentTarget'     = 'Group (Exclude)'
-}
 
 # Single source of truth for Graph device $select (Section 8.1)
 $script:ManagedDeviceSelectProperties = @(

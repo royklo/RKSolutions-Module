@@ -49,6 +49,13 @@ if (Test-Path $privatePath) {
     }
 }
 
+# Intune anomaly core: pack-proof files shared with the RKSolutions Maester pack (see module/Core/README.md).
+$corePath = Join-Path $moduleRoot 'Core'
+if (Test-Path $corePath) {
+    Get-ChildItem -Path $corePath -Filter '*.ps1' -File | Sort-Object Name | ForEach-Object { . $_.FullName }
+    Initialize-RKIntuneCoreState
+}
+
 # Load Public scripts (exported cmdlets)
 $publicPath = Join-Path $moduleRoot 'Public'
 if (Test-Path $publicPath) {
