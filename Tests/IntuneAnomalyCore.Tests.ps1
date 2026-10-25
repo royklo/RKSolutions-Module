@@ -160,3 +160,88 @@ Describe 'Get-DetailedPolicyAssignments -ThrowOnError' {
         }
     }
 }
+
+Describe 'Collector error kinds' {
+    It 'Get-IntuneAppData reports an app list it may not read (403) as not readable' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceAppManagement/mobileApps*' } {
+                $e = [System.Exception]::new('http 403')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
+                throw $e
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $r = Get-IntuneAppData -TenantName 'T' -Warnings $w
+            $r.Readable | Should -BeFalse
+            $r.Error | Should -Be 'http 403'
+            @($r.Apps).Count | Should -Be 0
+        }
+    }
+    It 'Get-IntuneAppData computes the failed percentage and leaves out an app whose summary answers 400' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceAppManagement/mobileApps*' } {
+                [pscustomobject]@{ id = 'a1'; displayName = 'App 1'; displayVersion = '1.0'; isAssigned = $true }
+                [pscustomobject]@{ id = 'a2'; displayName = 'App 2'; displayVersion = '2.0'; isAssigned = $false }
+            }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/installSummary' } {
+                [pscustomobject]@{ Id = 'a1'; Status = 200; Body = [pscustomobject]@{ failedDeviceCount = 1; installedDeviceCount = 3; notInstalledDeviceCount = 0; pendingInstallDeviceCount = 0; failedUserCount = 1 } }
+                [pscustomobject]@{ Id = 'a2'; Status = 400; Body = $null }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $r = Get-IntuneAppData -TenantName 'T' -Warnings $w
+            $r.Readable | Should -BeTrue
+            @($r.Apps).Count | Should -Be 1
+            $r.Apps[0].Application | Should -Be 'App 1'
+            $r.Apps[0].FailedDevicePercentage | Should -Be 25
+            $w.Count | Should -Be 1
+            $w[0].Area | Should -Be 'Apps'
+            $w[0].Message | Should -BeLike '*1 app(s)*'
+        }
+    }
+    It 'Get-BitLockerLapsAssignmentContext marks the BitLocker keys unreadable on 403 and still returns the context' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'v1.0/informationProtection/bitlocker/recoveryKeys*' } {
+                $e = [System.Exception]::new('http 403')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
+                throw $e
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
+            $ctx.BitLockerKeysReadable | Should -BeFalse
+            $ctx.BitLockerKeysError | Should -Be 'http 403'
+            $ctx.LapsCredentialsReadable | Should -BeTrue
+        }
+    }
+    It 'Get-BitLockerLapsAssignmentContext throws when the configurationPolicies list answers 500' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -eq 'beta/deviceManagement/configurationPolicies' } {
+                $e = [System.Exception]::new('http 500')
+                $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 500 })
+                throw $e
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            { Get-BitLockerLapsAssignmentContext -Warnings $w } | Should -Throw 'http 500'
+        }
+    }
+    It 'Get-BitLockerLapsAssignmentContext warns, and does not throw, when a group is not found (404)' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -eq 'beta/deviceManagement/deviceConfigurations' } {
+                [pscustomobject]@{ id = 'c1'; displayName = 'BitLocker'; '@odata.type' = '#microsoft.graph.windows10EndpointProtectionConfiguration' }
+            }
+            Mock Get-DetailedPolicyAssignments { [pscustomobject]@{ GroupId = 'g1' } }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*/transitiveMembers/*' } {
+                [pscustomobject]@{ Id = 'gd:g1'; Status = 404; Body = $null }
+                [pscustomobject]@{ Id = 'gu:g1'; Status = 200; Body = [pscustomobject]@{ value = @([pscustomobject]@{ id = 'u1'; userPrincipalName = 'User@contoso.com' }) } }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            $ctx = Get-BitLockerLapsAssignmentContext -Warnings $w
+            @($w | Where-Object { $_.Area -eq 'BitLocker' -and $_.Message -like '*group g1*' }).Count | Should -Be 1
+            $ctx.GroupUserUpns['g1'].Contains('user@contoso.com') | Should -BeTrue
+        }
+    }
+}

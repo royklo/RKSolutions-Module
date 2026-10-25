@@ -1,4 +1,12 @@
 function Get-AllDeviceData {
+    [CmdletBinding()]
+    param(
+        # Entra member users (id, userPrincipalName), for the logged-on users lookup.
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Users,
+        [Parameter(Mandatory)] [string] $TenantName,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]] $Warnings
+    )
+
     function Get-OperatingSystemProductType {
         param (
             $Customer
@@ -107,49 +115,55 @@ function Get-AllDeviceData {
 
     # Get all Windows Devices from Microsoft Intune
     $swStep = [System.Diagnostics.Stopwatch]::StartNew()
-    $AllDeviceData = Invoke-graphRequestWithPaging -Uri "https://graph.microsoft.com/beta/deviceManagement/managedDevices?`$filter=operatingSystem eq 'Windows'&`$select=$($Properties -join ',')"
+    $AllDeviceData = @(Invoke-RKCoreGraphRequest -Uri "beta/deviceManagement/managedDevices?`$filter=operatingSystem eq 'Windows'&`$select=$($Properties -join ',')" -All)
     #filter out managed by MDE
     $AllDeviceData = $AllDeviceData | Where-Object { $_.managementAgent -ne "msSense" }
     $swStep.Stop()
     Write-Verbose ("[Get-AllDeviceData] Managed devices fetch: {0:N2}s ({1} devices)" -f $swStep.Elapsed.TotalSeconds, $AllDeviceData.Count)
 
-    # The list endpoint always reports deviceType 'windowsRT'; only a per-device GET returns 'cloudPC'
-    # (Windows 365 and Dev Box). A failed lookup counts as a physical device so nothing is hidden by mistake.
-    $swStep.Restart()
-    $CloudPcIds = [System.Collections.Generic.HashSet[string]]::new()
-    $deviceTypeRequests = foreach ($d in $AllDeviceData) {
-        [PSCustomObject]@{ Id = "dt:$($d.id)"; Url = "/deviceManagement/managedDevices/$($d.id)?`$select=id,deviceType" }
-    }
-    foreach ($resp in (Invoke-RKGraphBatch -Requests @($deviceTypeRequests) -Activity 'Device types')) {
-        if ($resp.Status -eq 200 -and $resp.Body.deviceType -eq 'cloudPC') { [void]$CloudPcIds.Add(($resp.Id -replace '^dt:', '')) }
-    }
-    $swStep.Stop()
-    Write-Verbose ("[Get-AllDeviceData] Device type lookup: {0:N2}s ({1} Cloud PCs)" -f $swStep.Elapsed.TotalSeconds, $CloudPcIds.Count)
-
     # Get all AutoPilot registered devices under "Enrollment"
-    Write-Host "Fetching Autopilot devices..." -ForegroundColor Yellow
+    Write-Verbose "Fetching Autopilot devices..."
     $swStep.Restart()
-    $AutopilotDevices = (Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeviceIdentities")
+    $AutopilotDevices = @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/windowsAutopilotDeviceIdentities' -All)
     $swStep.Stop()
     Write-Verbose ("[Get-AllDeviceData] Autopilot devices fetch: {0:N2}s ({1} devices)" -f $swStep.Elapsed.TotalSeconds, $AutopilotDevices.Count)
 
     # Pre-build Autopilot lookup hashtable (serialNumber -> device object) for O(1) lookups
     $AutopilotLookup = @{}
     foreach ($ap in $AutopilotDevices) {
-        if ($ap.serialNumber) { $AutopilotLookup[$ap.serialNumber] = $ap }
+        if ($ap.serialNumber) { $AutopilotLookup[[string]$ap.serialNumber] = $ap }
     }
 
     # Autopilot device preparation (v2) associates devices via corporate identifiers
     # ("Manufacturer,Model,Serial" or a bare serial) instead of a hardware hash.
     $CorporateIdentifierSerials = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $CorporateIdentifiers = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/beta/deviceManagement/importedDeviceIdentities"
+    $CorporateIdentifiers = @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/importedDeviceIdentities' -All)
     foreach ($ci in $CorporateIdentifiers) {
         if ($ci.importedDeviceIdentifier) { [void]$CorporateIdentifierSerials.Add(($ci.importedDeviceIdentifier -split ',')[-1].Trim()) }
     }
 
+    # Only devices that BitLocker or Autopilot would flag need their deviceType: the list endpoint always reports
+    # 'windowsRT', and only a per-device GET returns 'cloudPC' (Windows 365 and Dev Box).
+    $swStep.Restart()
+    $candidates = @($AllDeviceData | Where-Object {
+            -not $_.isEncrypted -or (-not $AutopilotLookup.ContainsKey([string]$_.serialNumber) -and -not ($_.serialNumber -and $CorporateIdentifierSerials.Contains([string]$_.serialNumber)))
+        })
+    $CloudPcIds = [System.Collections.Generic.HashSet[string]]::new()
+    $deviceTypeRequests = @(foreach ($d in $candidates) { [pscustomobject]@{ Id = "dt:$($d.id)"; Url = "beta/deviceManagement/managedDevices/$($d.id)?`$select=id,deviceType" } })
+    $failedLookups = 0
+    foreach ($resp in @(Invoke-RKCoreGraphBatch -Requests $deviceTypeRequests)) {
+        if ($resp.Status -ne 200) { $failedLookups++; continue }
+        if ($resp.Body.deviceType -eq 'cloudPC') { [void]$CloudPcIds.Add(($resp.Id -replace '^dt:', '')) }
+    }
+    if ($failedLookups -gt 0) {
+        foreach ($area in 'BitLocker', 'Autopilot') { $Warnings.Add([pscustomobject]@{ Area = $area; Message = "The device type of $failedLookups device(s) could not be read; they are treated as physical devices, so a Cloud PC among them can be listed." }) }
+    }
+    $swStep.Stop()
+    Write-Verbose ("[Get-AllDeviceData] Device type lookup: {0:N2}s ({1} candidates, {2} Cloud PCs)" -f $swStep.Elapsed.TotalSeconds, $candidates.Count, $CloudPcIds.Count)
+
     # Pre-build user lookup hashtable (id -> UPN) for O(1) lookups
     $UserLookup = @{}
-    foreach ($u in $AllEntraIDUsers) {
+    foreach ($u in $Users) {
         if ($u.id -and $u.userPrincipalName) { $UserLookup[$u.id] = $u.userPrincipalName }
     }
 
@@ -162,22 +176,22 @@ function Get-AllDeviceData {
         # Module-scoped map: reset so a previous tenant's day count never leaks into this report.
         $script:ComplianceSettingFriendlyNames['RequireRemainContact'] = 'Is active (no compliance check-in within the compliance status validity period)'
         try {
-            $checkinDays = (Invoke-MgGraphRequest -Uri 'https://graph.microsoft.com/beta/deviceManagement/settings' -OutputType PSObject -ErrorAction Stop).deviceComplianceCheckinThresholdDays
+            $checkinDays = (Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/settings').deviceComplianceCheckinThresholdDays
             if ($checkinDays) { $script:ComplianceSettingFriendlyNames['RequireRemainContact'] = "Is active (no compliance check-in in the last $checkinDays days)" }
         } catch {
-            Write-Verbose "Compliance validity period lookup failed: $($_.Exception.Message)"
+            $Warnings.Add([pscustomobject]@{ Area = 'Compliance'; Message = "The compliance status validity period could not be read, so its reason does not show the number of days: $($_.Exception.Message)" })
         }
-        Write-Host "Fetching compliance details for $($NonCompliantDevices.Count) noncompliant devices..." -ForegroundColor Yellow
+        Write-Verbose "Fetching compliance details for $($NonCompliantDevices.Count) noncompliant devices..."
 
         $policyStateRequests = foreach ($d in $NonCompliantDevices) {
             [PSCustomObject]@{
                 Id  = "ps:$($d.id)"
-                Url = "/deviceManagement/managedDevices/$($d.id)/deviceCompliancePolicyStates"
+                Url = "beta/deviceManagement/managedDevices/$($d.id)/deviceCompliancePolicyStates"
             }
         }
 
         $swStep.Restart()
-        $policyStateResponses = Invoke-RKGraphBatch -Requests @($policyStateRequests) -Activity "Compliance policy states"
+        $policyStateResponses = Invoke-RKCoreGraphBatch -Requests @($policyStateRequests)
         $swStep.Stop()
         Write-Verbose ("[Get-AllDeviceData] Compliance policy-states batch: {0:N2}s ({1} devices, {2} responses)" -f $swStep.Elapsed.TotalSeconds, $NonCompliantDevices.Count, $policyStateResponses.Count)
 
@@ -204,14 +218,14 @@ function Get-AllDeviceData {
             foreach ($s in $states) {
                 $settingStatePairs.Add([PSCustomObject]@{
                         Id  = "ss:$deviceId|$($s.id)"
-                        Url = "/deviceManagement/managedDevices/$deviceId/deviceCompliancePolicyStates/$($s.id)/settingStates"
+                        Url = "beta/deviceManagement/managedDevices/$deviceId/deviceCompliancePolicyStates/$($s.id)/settingStates"
                     })
             }
         }
 
         if ($settingStatePairs.Count -gt 0) {
             $swStep.Restart()
-            $settingResponses = Invoke-RKGraphBatch -Requests @($settingStatePairs) -Activity "Compliance setting states"
+            $settingResponses = Invoke-RKCoreGraphBatch -Requests @($settingStatePairs)
             $swStep.Stop()
             Write-Verbose ("[Get-AllDeviceData] Compliance setting-states batch: {0:N2}s ({1} pairs)" -f $swStep.Elapsed.TotalSeconds, $settingStatePairs.Count)
 
@@ -243,7 +257,7 @@ function Get-AllDeviceData {
                     $deviceId = ($pair.Id -replace '^ss:', '') -split '\|' | Select-Object -First 1
                     if (-not $ComplianceRulesByDevice.ContainsKey($deviceId)) { continue }
                     try {
-                        $direct = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta$($pair.Url)" -ErrorAction Stop
+                        $direct = Invoke-RKCoreGraphRequest -Uri $pair.Url
                         $details = @($direct.value | Where-Object { $_.state -match 'nonCompliant' })
                         foreach ($det in $details) {
                             $rule = if ($det.settingName) { $det.settingName } else { $det.setting }
@@ -257,24 +271,21 @@ function Get-AllDeviceData {
                 Write-Verbose ("[Get-AllDeviceData] Compliance setting-states fallback: {0:N2}s ({1} pairs retried individually)" -f $swStep.Elapsed.TotalSeconds, $failedPairs.Count)
             }
         }
+
+        # Best effort: a noncompliant device without rules shows as Unknown on the Noncompliant tab, so count them.
+        $devicesWithoutRules = @($NonCompliantDevices | Where-Object { -not ($ComplianceRulesByDevice.ContainsKey($_.id) -and $ComplianceRulesByDevice[$_.id].Count -gt 0) }).Count
+        if ($devicesWithoutRules -gt 0) { $Warnings.Add([pscustomobject]@{ Area = 'Compliance'; Message = "The compliance reasons of $devicesWithoutRules device(s) could not be read; they show as Unknown." }) }
     }
 
     # Loop through all devices for device data
     $results = [System.Collections.Generic.List[PSObject]]::new()
     $totalDevices = $AllDeviceData.Count
 
-    Write-Host "Processing $totalDevices devices..." -ForegroundColor Yellow
+    Write-Verbose "Processing $totalDevices devices..."
     $swStep.Restart()
 
     for ($i = 0; $i -lt $AllDeviceData.Count; $i++) {
         $DeviceData = $AllDeviceData[$i]
-        $currentIndex = $i + 1
-
-        # Calculate progress percentage
-        $progressPercent = [math]::Round(($currentIndex / $totalDevices) * 100, 1)
-
-        # Show progress bar instead of Write-Host
-        Write-Progress -Activity "Processing Intune Devices" -Status "Processing device: $($DeviceData.DeviceName)" -CurrentOperation "$currentIndex of $totalDevices devices processed" -PercentComplete $progressPercent
 
         try {
             # Use bulk-fetched data directly (no per-device re-fetch needed - same $select)
@@ -374,159 +385,74 @@ function Get-AllDeviceData {
         }
     }
 
-    # Clear the progress bar when done
-    Write-Progress -Activity "Processing Intune Devices" -Completed
     $swStep.Stop()
     Write-Verbose ("[Get-AllDeviceData] Per-device projection loop: {0:N2}s" -f $swStep.Elapsed.TotalSeconds)
     $swTotal.Stop()
     Write-Verbose ("[Get-AllDeviceData] TOTAL: {0:N2}s" -f $swTotal.Elapsed.TotalSeconds)
 
-    Write-Host "Device processing completed!" -ForegroundColor Green
-    Write-Host "Processed $($results.Count) devices out of $totalDevices total devices" -ForegroundColor Green
-
-    # Debug output for hardware information availability
-    $devicesWithoutHardwareInfo = $results | Where-Object { $_.TPMversion -eq "Unknown" }
-
-    if ($devicesWithoutHardwareInfo.Count -gt 0) {
-        Write-Host "Some devices are missing hardware information:" -ForegroundColor Yellow
-        foreach ($device in $devicesWithoutHardwareInfo) {
-            Write-Host " - $($device.DeviceName) (Serial: $($device.Serialnumber))" -ForegroundColor Gray
-        }
-    }
+    Write-Verbose "Device processing completed!"
+    Write-Verbose "Processed $($results.Count) devices out of $totalDevices total devices"
     return $results
 
 }
 
-function Get-ApplicationFailures {
+function Get-IntuneAppData {
+    <#
+    .SYNOPSIS
+        The Windows apps of the tenant with their install summary. Readable is $false (with Error) when the app list
+        cannot be read for lack of permission (DeviceManagementApps.Read.All).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $TenantName,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]] $Warnings
+    )
 
-    # Cross-platform temporary file path
-    # Detect OS and set appropriate temp path
-    $detectedWindows = $false
-
-    # Check if automatic variables exist (PowerShell Core 6.0+)
-    if (Get-Variable -Name "IsWindows" -ErrorAction SilentlyContinue) {
-        $detectedWindows = $IsWindows
+    $types = 'win32CatalogApp', 'windowsStoreApp', 'microsoftStoreForBusinessApp', 'officeSuiteApp', 'windowsMicrosoftEdgeApp',
+        'windowsPhone81AppX', 'windowsPhone81StoreApp', 'windowsPhoneXAP', 'windowsAppX', 'windowsMobileMSI', 'windowsUniversalAppX',
+        'webApp', 'windowsWebApp', 'winGetApp'
+    $typeFilter = (@($types | ForEach-Object { "isof('microsoft.graph.$_')" }) + "(isof('microsoft.graph.win32LobApp') and not(isof('microsoft.graph.win32CatalogApp')))") -join ' or '
+    $filter = "($typeFilter) and (microsoft.graph.managedApp/appAvailability eq null or microsoft.graph.managedApp/appAvailability eq 'lineOfBusiness' or isAssigned eq true)"
+    try {
+        $apps = @(Invoke-RKCoreGraphRequest -Uri "beta/deviceAppManagement/mobileApps?`$filter=$filter&`$orderby=displayName" -All)
     }
-    # Fallback for older PowerShell versions
-    else {
-        $osInfo = [System.Environment]::OSVersion.Platform
-        switch ($osInfo) {
-            "Win32NT" { $detectedWindows = $true }
-            "Unix" {
-                # macOS/Linux detected but not used in this context
-            }
-            default {
-                try {
-                    if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
-                        $detectedWindows = $true
-                    }
-                    else {
-                        # Non-Windows OS detected
-                    }
-                } catch {
-                    $detectedWindows = $true
-                }
-            }
+    catch {
+        if ((Get-RKCoreGraphErrorStatus -ErrorRecord $_) -in 401, 403) {
+            return [pscustomobject]@{ Readable = $false; Error = $_.Exception.Message; Apps = @() }
+        }
+        throw
+    }
+
+    $requests = @(foreach ($a in $apps) { [pscustomobject]@{ Id = [string]$a.id; Url = "beta/deviceAppManagement/mobileApps/$($a.id)/installSummary" } })
+    $summaries = @{}
+    $unread = 0
+    foreach ($resp in @(Invoke-RKCoreGraphBatch -Requests $requests)) {
+        # Per-app summaries are best effort: one app that answers 400 must not stop every test.
+        if ($resp.Status -eq 200 -and $resp.Body) { $summaries[$resp.Id] = $resp.Body } else { $unread++ }
+    }
+    if ($unread -gt 0) { $Warnings.Add([pscustomobject]@{ Area = 'Apps'; Message = "The install summary of $unread app(s) could not be read; they are left out." }) }
+
+    $rows = foreach ($a in $apps) {
+        $s = $summaries[[string]$a.id]
+        if (-not $s) { continue }
+        $failed = [int]$s.failedDeviceCount
+        $targeted = $failed + [int]$s.installedDeviceCount + [int]$s.notInstalledDeviceCount + [int]$s.pendingInstallDeviceCount
+        [pscustomobject][ordered]@{
+            Customer               = $TenantName
+            Application            = $a.displayName
+            Platform               = 'Windows'
+            Version                = [string]$a.displayVersion
+            AssignmentStatus       = [bool]$a.isAssigned
+            FailedUserCount        = [int]$s.failedUserCount
+            FailedDeviceCount      = $failed
+            FailedDevicePercentage = if ($targeted -gt 0) { [math]::Round(100 * $failed / $targeted, 2) } else { 0 }
         }
     }
-
-    # Use a unique temporary file to avoid race conditions
-    $Data = [System.IO.Path]::GetTempFileName()
-
-    $apps = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$filter=(isof(%27microsoft.graph.win32CatalogApp%27)%20or%20isof(%27microsoft.graph.windowsStoreApp%27)%20or%20isof(%27microsoft.graph.microsoftStoreForBusinessApp%27)%20or%20isof(%27microsoft.graph.officeSuiteApp%27)%20or%20(isof(%27microsoft.graph.win32LobApp%27)%20and%20not(isof(%27microsoft.graph.win32CatalogApp%27)))%20or%20isof(%27microsoft.graph.windowsMicrosoftEdgeApp%27)%20or%20isof(%27microsoft.graph.windowsPhone81AppX%27)%20or%20isof(%27microsoft.graph.windowsPhone81StoreApp%27)%20or%20isof(%27microsoft.graph.windowsPhoneXAP%27)%20or%20isof(%27microsoft.graph.windowsAppX%27)%20or%20isof(%27microsoft.graph.windowsMobileMSI%27)%20or%20isof(%27microsoft.graph.windowsUniversalAppX%27)%20or%20isof(%27microsoft.graph.webApp%27)%20or%20isof(%27microsoft.graph.windowsWebApp%27)%20or%20isof(%27microsoft.graph.winGetApp%27))%20and%20(microsoft.graph.managedApp/appAvailability%20eq%20null%20or%20microsoft.graph.managedApp/appAvailability%20eq%20%27lineOfBusiness%27%20or%20isAssigned%20eq%20true)&`$orderby=displayName&").value
-
-    $params = @{
-        Select  = @(
-            "DisplayName"
-            "Publisher"
-            "Platform"
-            "AppVersion"
-            "FailedDevicePercentage"
-            "FailedDeviceCount"
-            "FailedUserCount"
-            "ApplicationId"
-        )
-        Skip    = 0
-        Top     = 50
-        Filter  = "(FailedDeviceCount gt '0')"
-        OrderBy = @(
-            "FailedDeviceCount desc"
-        )
-    }
-    Invoke-MgGraphRequest -Body $params -Uri "https://graph.microsoft.com/beta/deviceManagement/reports/getAppsInstallSummaryReport" -Method POST -OutputFilePath $Data
-
-    $DataFile = Get-Content $Data
-    # Fix char encoding to UTF-8
-    $Response = [system.Text.Encoding]::UTF8.GetString(($DataFile).ToCharArray()) | ConvertFrom-Json
-
-    # Pre-build app lookup (id -> app) so the per-row joins are O(1) instead of O(N) Where-Object scans.
-    $appLookup = @{}
-    foreach ($a in $apps) { if ($a.Id) { $appLookup[[string]$a.Id] = $a } }
-
-    # First pass: materialise the schema-flattened rows that have a matching app,
-    # collecting unique ApplicationIds so we can batch-fetch their assignments.
-    $rows = [System.Collections.Generic.List[hashtable]]::new()
-    $expandIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($value in $Response.Values) {
-        $LineObject = @{ }
-        foreach ($prop in $Response.Schema) {
-            $LineObject[$prop.Column] = $value[$Response.Schema.IndexOf($prop)]
-        }
-        $appId = [string]$LineObject.ApplicationId
-        if ($appLookup.ContainsKey($appId)) {
-            $rows.Add($LineObject)
-            [void]$expandIds.Add($appId)
-        }
-    }
-
-    # Batch-fetch ?$expand=assignments for every failed app in parallel sub-requests.
-    $assignmentStatusByAppId = @{}
-    if ($expandIds.Count -gt 0) {
-        $expandRequests = foreach ($id in $expandIds) {
-            [PSCustomObject]@{
-                Id  = "app:$id"
-                Url = "/deviceAppManagement/mobileApps/$id/?`$expand=assignments"
-            }
-        }
-        $expandResponses = Invoke-RKGraphBatch -Requests @($expandRequests) -Activity 'App assignments'
-        foreach ($resp in $expandResponses) {
-            if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
-            $appId = $resp.Id -replace '^app:', ''
-            $hasAssignments = $resp.Body.assignments -and (@($resp.Body.assignments).Count -gt 0)
-            $assignmentStatusByAppId[$appId] = [bool]$hasAssignments
-        }
-    }
-
-    # Build result array from the prepared rows using O(1) lookups.
-    $ReturnObject = New-Object System.Collections.ArrayList
-    foreach ($LineObject in $rows) {
-        $appId = [string]$LineObject.ApplicationId
-        $PlatformName = if ($LineObject.Platform_loc) { $LineObject.Platform_loc } else { $LineObject.Platform }
-        $AssignmentStatus = $false
-        if ($assignmentStatusByAppId.ContainsKey($appId)) { $AssignmentStatus = $assignmentStatusByAppId[$appId] }
-
-        $ReturnObject.Add([PSCustomObject][ordered]@{
-                Customer               = $tenantname
-                Application            = $appLookup[$appId].displayName
-                Platform               = $PlatformName
-                Version                = $LineObject.AppVersion
-                AssignmentStatus       = $AssignmentStatus
-                FailedUserCount        = $LineObject.FailedUserCount
-                FailedDeviceCount      = $LineObject.FailedDeviceCount
-                FailedDevicePercentage = [math]::Round([double]$LineObject.FailedDevicePercentage, 2)
-            }) | Out-Null
-    }
-
-    # Clean up temporary data file
-    if (Test-Path -Path $Data) {
-        Remove-Item -Path $Data -Force
-    }
-
-    return $ReturnObject | Sort-Object -Property FailedDeviceCount -Descending
+    [pscustomobject]@{ Readable = $true; Error = $null; Apps = @($rows) }
 }
 
 function Get-AutopilotProfilesInformation {
-(Invoke-GraphRequest -Uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/" -OutputType PSObject).value
+    @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/windowsAutopilotDeploymentProfiles' -All)
 }
 
 # ----------------------------------------------------------------------------
@@ -535,8 +461,8 @@ function Get-AutopilotProfilesInformation {
 # backed) policy are actually applied (via assignment resolution incl. groups,
 # all users/devices, and assignment filters), and cross-references with the
 # recovery key / local credential directory endpoints to flag escrow gaps.
-# Reuses Invoke-GraphRequestWithPaging, the $script:AllFilters cache established by
-# IntuneEnrollmentFlows.ps1 (load order is enforced in RKSolutions.psm1), and
+# Reads Graph through Invoke-RKCoreGraphRequest and Invoke-RKCoreGraphBatch, fills the
+# $script:AllFilters cache that Initialize-RKIntuneCoreState creates, and uses
 # Get-DetailedPolicyAssignments and Test-IntuneFilter from Core/IntunePolicyAssignment.ps1.
 # ----------------------------------------------------------------------------
 
@@ -550,7 +476,8 @@ function Get-BitLockerLapsAssignmentContext {
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $false)] [switch] $DebugMode
+        [Parameter(Mandatory = $false)] [switch] $DebugMode,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]] $Warnings
     )
 
     $context = [PSCustomObject]@{
@@ -569,20 +496,19 @@ function Get-BitLockerLapsAssignmentContext {
         # the Entra device by displayName, recover its deviceId, retry the join.
         EntraDeviceIdByName      = @{}    # lowercased deviceName -> azureAdDeviceId
         Filters                  = @{}    # filterId -> filter object (mirror of $script:AllFilters)
-        # Raw configurationPolicies?$expand=settings result, retained so the
-        # deprecation walker can iterate every Settings Catalog policy without
-        # a second Graph round-trip.
+        # configurationPolicies with their settings (and settingDefinitions) attached,
+        # retained so the deprecation walker can iterate every Settings Catalog policy
+        # without a second Graph round-trip.
         ConfigurationPolicies    = @()
+        # Scope-gated reads: $false (with the error) when the connection lacks the scope.
+        BitLockerKeysReadable    = $true
+        BitLockerKeysError       = $null
+        LapsCredentialsReadable  = $true
+        LapsCredentialsError     = $null
     }
 
     # 1. Prime assignment filters cache (used by Get-DetailedPolicyAssignments + Test-IntuneFilter).
-    if ($script:AllFilters.Count -eq 0) {
-        try {
-            $rawFilters = Invoke-GraphRequestWithPaging -Uri 'https://graph.microsoft.com/beta/deviceManagement/assignmentFilters'
-            if ($rawFilters) { foreach ($f in $rawFilters) { $script:AllFilters[$f.id] = $f } }
-        }
-        catch { Write-Verbose "Failed to load assignment filters: $($_.Exception.Message)" }
-    }
+    foreach ($f in @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/assignmentFilters' -All)) { $script:AllFilters[$f.id] = $f }
     $context.Filters = $script:AllFilters
 
     # 2. Discover Settings Catalog policies that contain BitLocker or LAPS settings.
@@ -590,13 +516,9 @@ function Get-BitLockerLapsAssignmentContext {
     #    /settings per policy. Avoids Graph hard-capping page size when $expand=settings is used
     #    (observed ~1-2 policies per page on cosmos-backed tenants); batch sub-requests execute
     #    server-side in parallel, so ~75 policies finish in ~4 batched round trips.
-    Write-Host '  Discovering Settings Catalog policies (BitLocker / LAPS)...' -ForegroundColor Cyan
-    $configPolicies = @()
+    Write-Verbose '  Discovering Settings Catalog policies (BitLocker / LAPS)...'
     $swCfg = [System.Diagnostics.Stopwatch]::StartNew()
-    try {
-        $configPolicies = Invoke-GraphRequestWithPaging -Uri 'https://graph.microsoft.com/beta/deviceManagement/configurationPolicies?$top=999'
-    }
-    catch { Write-Warning "configurationPolicies list fetch failed: $($_.Exception.Message)" }
+    $configPolicies = @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/configurationPolicies' -All)
     $swCfg.Stop()
     Write-Verbose ("[BitLockerLaps] configurationPolicies list: {0:N2}s ({1} policies)" -f $swCfg.Elapsed.TotalSeconds, $configPolicies.Count)
 
@@ -605,15 +527,18 @@ function Get-BitLockerLapsAssignmentContext {
         $settingsRequests = foreach ($p in $configPolicies) {
             [PSCustomObject]@{
                 Id  = "cps:$($p.id)"
-                Url = "/deviceManagement/configurationPolicies/$($p.id)/settings"
+                Url = "beta/deviceManagement/configurationPolicies/$($p.id)/settings?`$expand=settingDefinitions"
             }
         }
-        $settingsResponses = Invoke-RKGraphBatch -Requests @($settingsRequests) -Activity 'Settings Catalog policy settings'
+        $settingsResponses = Invoke-RKCoreGraphBatch -Requests @($settingsRequests)
         $settingsByPolicyId = @{}
         foreach ($resp in $settingsResponses) {
-            if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
-            $pid = $resp.Id -replace '^cps:', ''
-            $settingsByPolicyId[$pid] = @($resp.Body.value)
+            $body = Get-RKCoreBatchBody -Response $resp -What "the settings of policy $($resp.Id -replace '^cps:', '')" -Area 'Settings' -Warnings $Warnings; if (-not $body) { continue }
+            $policyId = $resp.Id -replace '^cps:', ''
+            $settings = @($body.value)
+            # $expand can make Graph return smaller pages: read the rest, so a policy with many settings is complete.
+            if ($body.'@odata.nextLink') { $settings += @(Invoke-RKCoreGraphRequest -Uri $body.'@odata.nextLink' -All) }
+            $settingsByPolicyId[$policyId] = $settings
         }
         # Attach settings back onto each policy so the existing loop below stays unchanged.
         foreach ($p in $configPolicies) {
@@ -652,7 +577,7 @@ function Get-BitLockerLapsAssignmentContext {
         }
         $displayName = if ($policy.name) { $policy.name } else { $policy.displayName }
         if ($hasBitLocker) {
-            $assignments = Get-DetailedPolicyAssignments -EntityType 'configurationPolicies' -EntityId $policy.id -PolicyName $displayName -DebugMode:$DebugMode
+            $assignments = Get-DetailedPolicyAssignments -EntityType 'configurationPolicies' -EntityId $policy.id -PolicyName $displayName -DebugMode:$DebugMode -ThrowOnError
             $context.BitLockerPolicies.Add([PSCustomObject]@{
                 Id          = $policy.id
                 DisplayName = $displayName
@@ -662,7 +587,7 @@ function Get-BitLockerLapsAssignmentContext {
         }
         if ($hasLaps -and $lapsBackupValue -eq 1) {
             # Only Entra-backed LAPS policies are relevant to "can we read it from Entra?"
-            $assignments = Get-DetailedPolicyAssignments -EntityType 'configurationPolicies' -EntityId $policy.id -PolicyName $displayName -DebugMode:$DebugMode
+            $assignments = Get-DetailedPolicyAssignments -EntityType 'configurationPolicies' -EntityId $policy.id -PolicyName $displayName -DebugMode:$DebugMode -ThrowOnError
             $context.LapsPolicies.Add([PSCustomObject]@{
                 Id              = $policy.id
                 DisplayName     = $displayName
@@ -674,43 +599,40 @@ function Get-BitLockerLapsAssignmentContext {
     }
 
     # 3. Discover legacy Endpoint Protection device configurations that include BitLocker settings.
-    Write-Host '  Discovering legacy device configuration policies (BitLocker)...' -ForegroundColor Cyan
-    try {
-        $deviceConfigs = Invoke-GraphRequestWithPaging -Uri 'https://graph.microsoft.com/beta/deviceManagement/deviceConfigurations'
-        foreach ($cfg in $deviceConfigs) {
-            $odataType = [string]$cfg.'@odata.type'
-            if ($odataType -eq '#microsoft.graph.windows10EndpointProtectionConfiguration') {
-                $assignments = Get-DetailedPolicyAssignments -EntityType 'deviceConfigurations' -EntityId $cfg.id -PolicyName $cfg.displayName -DebugMode:$DebugMode
-                $context.BitLockerPolicies.Add([PSCustomObject]@{
-                    Id          = $cfg.id
-                    DisplayName = $cfg.displayName
-                    Source      = 'DeviceConfiguration'
-                    Assignments = @($assignments)
-                })
-            }
+    Write-Verbose '  Discovering legacy device configuration policies (BitLocker)...'
+    $deviceConfigs = @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/deviceConfigurations' -All)
+    foreach ($cfg in $deviceConfigs) {
+        $odataType = [string]$cfg.'@odata.type'
+        if ($odataType -eq '#microsoft.graph.windows10EndpointProtectionConfiguration') {
+            $assignments = Get-DetailedPolicyAssignments -EntityType 'deviceConfigurations' -EntityId $cfg.id -PolicyName $cfg.displayName -DebugMode:$DebugMode -ThrowOnError
+            $context.BitLockerPolicies.Add([PSCustomObject]@{
+                Id          = $cfg.id
+                DisplayName = $cfg.displayName
+                Source      = 'DeviceConfiguration'
+                Assignments = @($assignments)
+            })
         }
     }
-    catch { Write-Warning "deviceConfigurations fetch failed: $($_.Exception.Message)" }
 
     # 4. Discover Endpoint Security intents (BitLocker disk encryption template).
-    Write-Host '  Discovering Endpoint Security intents (BitLocker)...' -ForegroundColor Cyan
-    try {
-        $intents = Invoke-GraphRequestWithPaging -Uri 'https://graph.microsoft.com/beta/deviceManagement/intents'
-        foreach ($intent in $intents) {
-            $name = [string]$intent.displayName
-            # No reliable filter for BitLocker template; match by name as a pragmatic discovery hint.
-            if ($name -match '(?i)bitlocker' -or $name -match '(?i)disk\s*encryption') {
-                $assignments = Get-DetailedPolicyAssignments -EntityType 'deviceManagement/intents' -EntityId $intent.id -PolicyName $name -DebugMode:$DebugMode
-                $context.BitLockerPolicies.Add([PSCustomObject]@{
-                    Id          = $intent.id
-                    DisplayName = $name
-                    Source      = 'Intent'
-                    Assignments = @($assignments)
-                })
-            }
+    #    The intent list is best effort; the assignments of a matching intent are read like every other policy's.
+    Write-Verbose '  Discovering Endpoint Security intents (BitLocker)...'
+    $intents = @()
+    try { $intents = @(Invoke-RKCoreGraphRequest -Uri 'beta/deviceManagement/intents' -All) }
+    catch { $Warnings.Add([pscustomobject]@{ Area = 'BitLocker'; Message = "The Endpoint Security intents could not be read, so a BitLocker policy made from an intent is not counted: $($_.Exception.Message)" }) }
+    foreach ($intent in $intents) {
+        $name = [string]$intent.displayName
+        # No reliable filter for BitLocker template; match by name as a pragmatic discovery hint.
+        if ($name -match '(?i)bitlocker' -or $name -match '(?i)disk\s*encryption') {
+            $assignments = Get-DetailedPolicyAssignments -EntityType 'deviceManagement/intents' -EntityId $intent.id -PolicyName $name -DebugMode:$DebugMode -ThrowOnError
+            $context.BitLockerPolicies.Add([PSCustomObject]@{
+                Id          = $intent.id
+                DisplayName = $name
+                Source      = 'Intent'
+                Assignments = @($assignments)
+            })
         }
     }
-    catch { Write-Verbose "intents fetch skipped: $($_.Exception.Message)" }
 
     # 5. Collect every groupId referenced by any of those policies' assignments, then
     #    fetch transitive members for each group exactly once.
@@ -720,8 +642,8 @@ function Get-BitLockerLapsAssignmentContext {
             if ($a.GroupId) { [void]$referencedGroupIds.Add([string]$a.GroupId) }
         }
     }
-    Write-Host "  Resolving transitive members for $($referencedGroupIds.Count) group(s) used by BitLocker/LAPS assignments..." -ForegroundColor Cyan
-    # Initialise empty sets up front so every referenced group has entries even if a fetch fails.
+    Write-Verbose "  Resolving transitive members for $($referencedGroupIds.Count) group(s) used by BitLocker/LAPS assignments..."
+    # Initialise empty sets up front so every referenced group has entries even if it was not found.
     foreach ($gid in $referencedGroupIds) {
         $context.GroupDeviceAadIds[$gid] = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $context.GroupUserUpns[$gid]     = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -732,23 +654,23 @@ function Get-BitLockerLapsAssignmentContext {
         foreach ($gid in $referencedGroupIds) {
             $memberRequests.Add([PSCustomObject]@{
                     Id  = "gd:$gid"
-                    Url = "/groups/$gid/transitiveMembers/microsoft.graph.device?`$select=id,deviceId"
+                    Url = "v1.0/groups/$gid/transitiveMembers/microsoft.graph.device?`$select=id,deviceId"
                 })
             $memberRequests.Add([PSCustomObject]@{
                     Id  = "gu:$gid"
-                    Url = "/groups/$gid/transitiveMembers/microsoft.graph.user?`$select=id,userPrincipalName"
+                    Url = "v1.0/groups/$gid/transitiveMembers/microsoft.graph.user?`$select=id,userPrincipalName"
                 })
         }
-        # transitiveMembers lives on v1.0; route the batch there to keep sub-request URLs consistent.
-        $memberResponses = Invoke-RKGraphBatch -Requests @($memberRequests) -GraphVersion 'v1.0' -Activity 'Group transitive members'
+        # transitiveMembers lives on v1.0, so the request URLs name that version.
+        $memberResponses = Invoke-RKCoreGraphBatch -Requests @($memberRequests)
         # Any sub-response carrying @odata.nextLink overflows the first page (999 members).
         # Fall back to sequential paging for those groups only — rare in practice.
         $nextLinkFollowups = [System.Collections.Generic.List[object]]::new()
         foreach ($resp in $memberResponses) {
-            if ($resp.Status -ne 200 -or -not $resp.Body) { continue }
+            $body = Get-RKCoreBatchBody -Response $resp -What "the members of group $($resp.Id.Substring(3))" -Area 'BitLocker' -Warnings $Warnings; if (-not $body) { continue }
             $isUser = $resp.Id.StartsWith('gu:')
             $gid    = $resp.Id.Substring(3)
-            foreach ($m in @($resp.Body.value)) {
+            foreach ($m in @($body.value)) {
                 if ($isUser) {
                     if ($m.id)                { [void]$context.GroupUserIds[$gid].Add([string]$m.id) }
                     if ($m.userPrincipalName) { [void]$context.GroupUserUpns[$gid].Add(([string]$m.userPrincipalName).ToLowerInvariant()) }
@@ -756,95 +678,122 @@ function Get-BitLockerLapsAssignmentContext {
                     if ($m.deviceId) { [void]$context.GroupDeviceAadIds[$gid].Add([string]$m.deviceId) }
                 }
             }
-            if ($resp.Body.'@odata.nextLink') {
-                $nextLinkFollowups.Add([PSCustomObject]@{ Gid = $gid; IsUser = $isUser; NextUri = [string]$resp.Body.'@odata.nextLink' })
+            if ($body.'@odata.nextLink') {
+                $nextLinkFollowups.Add([PSCustomObject]@{ Gid = $gid; IsUser = $isUser; NextUri = [string]$body.'@odata.nextLink' })
             }
         }
         foreach ($f in $nextLinkFollowups) {
-            try {
-                $rest = Invoke-GraphRequestWithPaging -Uri $f.NextUri
-                foreach ($m in $rest) {
-                    if ($f.IsUser) {
-                        if ($m.id)                { [void]$context.GroupUserIds[$f.Gid].Add([string]$m.id) }
-                        if ($m.userPrincipalName) { [void]$context.GroupUserUpns[$f.Gid].Add(([string]$m.userPrincipalName).ToLowerInvariant()) }
-                    } else {
-                        if ($m.deviceId) { [void]$context.GroupDeviceAadIds[$f.Gid].Add([string]$m.deviceId) }
-                    }
+            $rest = @(Invoke-RKCoreGraphRequest -Uri $f.NextUri -All)
+            foreach ($m in $rest) {
+                if ($f.IsUser) {
+                    if ($m.id)                { [void]$context.GroupUserIds[$f.Gid].Add([string]$m.id) }
+                    if ($m.userPrincipalName) { [void]$context.GroupUserUpns[$f.Gid].Add(([string]$m.userPrincipalName).ToLowerInvariant()) }
+                } else {
+                    if ($m.deviceId) { [void]$context.GroupDeviceAadIds[$f.Gid].Add([string]$m.deviceId) }
                 }
             }
-            catch { Write-Verbose "Group $($f.Gid) nextLink follow-up failed: $($_.Exception.Message)" }
         }
     }
 
     # 6. BitLocker recovery keys. OS-volume key (volumeType == 1) is what protects the system drive.
-    #    Use Invoke-MgGraphRequest directly (not the swallow-on-error paging helper) so a
-    #    missing scope surfaces as a clear warning rather than an empty result set.
-    Write-Host '  Fetching BitLocker recovery key index (OS volume)...' -ForegroundColor Cyan
+    #    A missing scope (BitlockerKey.ReadBasic.All, 401/403) sets BitLockerKeysReadable instead of
+    #    reading as an empty key list; any other error throws.
+    Write-Verbose '  Fetching BitLocker recovery key index (OS volume)...'
     $bitLockerFetched = 0
     try {
-        $bitlockerUri = 'https://graph.microsoft.com/v1.0/informationProtection/bitlocker/recoveryKeys?$select=id,deviceId,volumeType,createdDateTime'
-        do {
-            $resp = Invoke-MgGraphRequest -Uri $bitlockerUri -Method GET -OutputType PSObject -ErrorAction Stop
-            if ($resp.value) {
-                foreach ($k in $resp.value) {
-                    $bitLockerFetched++
-                    if ([int]$k.volumeType -eq 1 -and $k.deviceId) { [void]$context.BitLockerKeyDeviceIds.Add([string]$k.deviceId) }
-                }
-            }
-            $bitlockerUri = $resp.'@odata.nextLink'
-        } while ($bitlockerUri)
-        Write-Host "    Indexed $($context.BitLockerKeyDeviceIds.Count) device(s) with OS-volume BitLocker keys (from $bitLockerFetched key rotations)." -ForegroundColor Green
+        foreach ($k in @(Invoke-RKCoreGraphRequest -Uri 'v1.0/informationProtection/bitlocker/recoveryKeys?$select=id,deviceId,volumeType,createdDateTime' -All)) {
+            $bitLockerFetched++
+            if ([int]$k.volumeType -eq 1 -and $k.deviceId) { [void]$context.BitLockerKeyDeviceIds.Add([string]$k.deviceId) }
+        }
+        Write-Verbose "    Indexed $($context.BitLockerKeyDeviceIds.Count) device(s) with OS-volume BitLocker keys (from $bitLockerFetched key rotations)."
     }
     catch {
-        $msg = $_.Exception.Message
-        if ($msg -match '403|Forbidden|Authorization|scopes') {
-            Write-Warning "BitLocker recoveryKeys fetch DENIED. Most likely cause: the connected app is missing BitlockerKey.ReadBasic.All. Without it, every encrypted device will be flagged 'no key in Entra'. Reconnect with: Disconnect-RKGraph; Connect-RKGraph"
+        if ((Get-RKCoreGraphErrorStatus -ErrorRecord $_) -in 401, 403) {
+            $context.BitLockerKeysReadable = $false
+            $context.BitLockerKeysError = $_.Exception.Message
         }
-        else { Write-Warning "BitLocker recoveryKeys fetch failed: $msg" }
+        else { throw }
     }
 
     # 7. LAPS local credentials directory. Entry's `id` field IS the Azure AD device id
     #    (verified against live Graph). Key the hashtable by it directly.
-    Write-Host '  Fetching directory/deviceLocalCredentials (Windows LAPS)...' -ForegroundColor Cyan
+    #    A missing scope (DeviceLocalCredential.ReadBasic.All, 401/403) sets LapsCredentialsReadable.
+    Write-Verbose '  Fetching directory/deviceLocalCredentials (Windows LAPS)...'
     $lapsFetched = 0
     try {
-        $lapsUri = 'https://graph.microsoft.com/v1.0/directory/deviceLocalCredentials?$select=id,deviceName,lastBackupDateTime,refreshDateTime'
-        do {
-            $resp = Invoke-MgGraphRequest -Uri $lapsUri -Method GET -OutputType PSObject -ErrorAction Stop
-            if ($resp.value) {
-                foreach ($e in $resp.value) {
-                    $lapsFetched++
-                    if ($e.id) { $context.LapsCredentialByDeviceId[[string]$e.id] = $e }
-                    if ($e.deviceName) {
-                        $context.LapsCredentialByDeviceName[([string]$e.deviceName).ToLowerInvariant()] = $e
-                    }
-                }
+        foreach ($e in @(Invoke-RKCoreGraphRequest -Uri 'v1.0/directory/deviceLocalCredentials?$select=id,deviceName,lastBackupDateTime,refreshDateTime' -All)) {
+            $lapsFetched++
+            if ($e.id) { $context.LapsCredentialByDeviceId[[string]$e.id] = $e }
+            if ($e.deviceName) {
+                $context.LapsCredentialByDeviceName[([string]$e.deviceName).ToLowerInvariant()] = $e
             }
-            $lapsUri = $resp.'@odata.nextLink'
-        } while ($lapsUri)
-        Write-Host "    Indexed $lapsFetched LAPS local credential record(s)." -ForegroundColor Green
+        }
+        Write-Verbose "    Indexed $lapsFetched LAPS local credential record(s)."
     }
     catch {
-        $msg = $_.Exception.Message
-        if ($msg -match '403|Forbidden|Authorization|scopes') {
-            Write-Warning "deviceLocalCredentials fetch DENIED. Most likely cause: the connected app is missing DeviceLocalCredential.ReadBasic.All. Without it, every device will be flagged 'no LAPS backup'. Reconnect with: Disconnect-RKGraph; Connect-RKGraph"
+        if ((Get-RKCoreGraphErrorStatus -ErrorRecord $_) -in 401, 403) {
+            $context.LapsCredentialsReadable = $false
+            $context.LapsCredentialsError = $_.Exception.Message
         }
-        else { Write-Warning "deviceLocalCredentials fetch failed: $msg" }
+        else { throw }
     }
 
     # 8. Safety-net deviceName -> deviceId map. Only used when a managedDevice record
     #    has no azureADDeviceId of its own (rare, but seen on partially-enrolled devices).
-    Write-Host '  Building Entra device name -> deviceId safety map...' -ForegroundColor Cyan
+    Write-Verbose '  Building Entra device name -> deviceId safety map...'
     try {
-        $entraDevices = Invoke-GraphRequestWithPaging -Uri 'https://graph.microsoft.com/v1.0/devices?$select=deviceId,displayName'
+        $entraDevices = @(Invoke-RKCoreGraphRequest -Uri 'v1.0/devices?$select=deviceId,displayName' -All)
         foreach ($ed in $entraDevices) {
             if ($ed.deviceId -and $ed.displayName) {
                 $context.EntraDeviceIdByName[([string]$ed.displayName).ToLowerInvariant()] = [string]$ed.deviceId
             }
         }
-        Write-Host "    Mapped $($context.EntraDeviceIdByName.Count) Entra device(s) by displayName." -ForegroundColor Green
+        Write-Verbose "    Mapped $($context.EntraDeviceIdByName.Count) Entra device(s) by displayName."
     }
-    catch { Write-Warning "/v1.0/devices fetch failed: $($_.Exception.Message)" }
+    catch {
+        foreach ($area in 'BitLocker', 'Laps') { $Warnings.Add([pscustomobject]@{ Area = $area; Message = "The Entra device list could not be read, so a device without an Entra device ID in Intune is not matched by name: $($_.Exception.Message)" }) }
+    }
 
     return $context
+}
+
+function Get-RKIntuneAnomalyData {
+    <#
+    .SYNOPSIS
+        Collects everything the Intune anomaly resolvers need, once. Required reads throw; reads that need an
+        optional scope set a *Readable flag; best-effort reads add Warnings (Area, Message).
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param()
+
+    Initialize-RKIntuneCoreState
+    $warnings = [System.Collections.Generic.List[object]]::new()
+    Write-Verbose 'Collecting Intune anomaly data'
+
+    $organization = @(Invoke-RKCoreGraphRequest -Uri 'v1.0/organization?$select=id,displayName' -All)[0]
+    $tenantName = [string]$organization.displayName
+    $users = @(Invoke-RKCoreGraphRequest -Uri 'beta/users?$select=id,userPrincipalName,userType,accountEnabled' -All | Where-Object { $_.userType -eq 'Member' })
+    $devices = @(Get-AllDeviceData -Users $users -TenantName $tenantName -Warnings $warnings)
+    $profiles = @(Get-AutopilotProfilesInformation)
+    $context = Get-BitLockerLapsAssignmentContext -Warnings $warnings
+    $apps = Get-IntuneAppData -TenantName $tenantName -Warnings $warnings
+
+    [pscustomobject]@{
+        TenantId                = [string]$organization.id
+        TenantName              = $tenantName
+        CollectedAt             = Get-Date
+        Devices                 = $devices
+        Users                   = $users
+        AutopilotProfiles       = $profiles
+        SecurityKeyContext      = $context
+        Apps                    = $apps.Apps
+        AppsReadable            = $apps.Readable
+        AppsError               = $apps.Error
+        BitLockerKeysReadable   = $context.BitLockerKeysReadable
+        BitLockerKeysError      = $context.BitLockerKeysError
+        LapsCredentialsReadable = $context.LapsCredentialsReadable
+        LapsCredentialsError    = $context.LapsCredentialsError
+        Warnings                = $warnings.ToArray()
+    }
 }
