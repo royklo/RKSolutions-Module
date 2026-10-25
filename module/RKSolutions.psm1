@@ -30,6 +30,7 @@ if (Test-Path $privatePath) {
         'Connect-ToMgGraph.ps1',
         'Invoke-GraphRequestWithPaging.ps1',
         'Invoke-RKGraphBatch.ps1',
+        'RKCoreGraphAdapter.ps1',
         'Send-EmailWithAttachment.ps1',
         'ConvertTo-DateString.ps1',
         'Get-RKSolutionsReportTemplate.ps1',
