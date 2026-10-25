@@ -11,18 +11,18 @@ Use these when registering an app in Azure AD / Entra ID or when calling `Connec
 | Permission | Used by |
 |------------|---------|
 | **AuditLog.Read.All** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
-| **BitlockerKey.ReadBasic.All** | Get-IntuneAnomaliesReport |
+| **BitlockerKey.ReadBasic.All** | Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly |
 | **CustomSecAttributeAssignment.Read.All** | Get-CustomSecurityAttributesReport |
 | **CustomSecAttributeDefinition.Read.All** | Get-CustomSecurityAttributesReport |
-| **DeviceLocalCredential.ReadBasic.All** | Get-IntuneAnomaliesReport |
+| **DeviceLocalCredential.ReadBasic.All** | Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly |
 | **CloudLicensing.Read** | Get-M365LicenseAssignmentReport |
-| **CloudPC.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport |
+| **CloudPC.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly |
 | **Device.Read.All** | Get-IntuneEnrollmentFlowsReport |
-| **DeviceManagementApps.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport |
-| **DeviceManagementConfiguration.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport |
-| **DeviceManagementManagedDevices.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport |
-| **DeviceManagementServiceConfig.Read.All** | Get-IntuneAnomaliesReport |
-| **Directory.Read.All** | Get-IntuneAnomaliesReport, Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
+| **DeviceManagementApps.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly |
+| **DeviceManagementConfiguration.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly |
+| **DeviceManagementManagedDevices.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly |
+| **DeviceManagementServiceConfig.Read.All** | Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly |
+| **Directory.Read.All** | Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly, Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
 | **Group.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-M365LicenseAssignmentReport |
 | **GroupMember.Read.All** | Get-M365LicenseAssignmentReport |
 | **Mail.Send** | Get-IntuneAnomaliesReport, Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport, Get-CustomSecurityAttributesReport (optional, for email report) |
@@ -30,8 +30,8 @@ Use these when registering an app in Azure AD / Entra ID or when calling `Connec
 | **PrivilegedEligibilitySchedule.Read.AzureADGroup** | Get-EntraAdminRolesReport |
 | **RoleAssignmentSchedule.Read.Directory** | Get-EntraAdminRolesReport |
 | **RoleManagement.Read.Directory** | Get-EntraAdminRolesReport, Get-M365LicenseAssignmentReport |
-| **User.Read** | Get-IntuneAnomaliesReport (minimum for interactive) |
-| **User.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-M365LicenseAssignmentReport, Get-CustomSecurityAttributesReport |
+| **User.Read** | Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly (minimum for interactive) |
+| **User.Read.All** | Get-IntuneEnrollmentFlowsReport, Get-IntuneAnomaliesReport, Get-RKIntuneAnomaly, Get-M365LicenseAssignmentReport, Get-CustomSecurityAttributesReport |
 
 ---
 
@@ -94,6 +94,24 @@ Default `-RequiredScopes` is the **union** of all scopes below so one connection
 - DeviceLocalCredential.ReadBasic.All  
 
 The two new scopes drive the BitLocker key escrow and Windows LAPS backup anomaly checks. They are intentionally the **ReadBasic** variants: presence and metadata only, never the recovery password or local admin password itself.  
+
+---
+
+### Get-RKIntuneAnomaly
+
+Same as Get-IntuneAnomaliesReport, without Mail.Send (it returns objects and sends no email).
+
+- User.Read  
+- User.Read.All  
+- Group.Read.All  
+- DeviceManagementManagedDevices.Read.All  
+- DeviceManagementConfiguration.Read.All  
+- DeviceManagementServiceConfig.Read.All  
+- DeviceManagementApps.Read.All  
+- Directory.Read.All  
+- CloudPC.Read.All  
+- BitlockerKey.ReadBasic.All  
+- DeviceLocalCredential.ReadBasic.All  
 
 ---
 

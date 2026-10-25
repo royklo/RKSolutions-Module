@@ -2,7 +2,7 @@
 # The RKSolutions Maester pack has its own implementation (helpers/GraphAdapter.ps1); this file is not synced.
 
 function Invoke-RKCoreGraphGet {
-    # One GET. The Graph SDK retries 429/503/504 itself; retry 500 and 502 here like Maester's own Graph helper.
+    # One GET. The Graph SDK retries 429/503/504 itself; retry 500, 502 and a dropped connection or timeout (no status) here like Maester's own Graph helper.
     [CmdletBinding()]
     param([Parameter(Mandatory)] [string] $Uri)
 
@@ -10,7 +10,7 @@ function Invoke-RKCoreGraphGet {
     for ($attempt = 0; ; $attempt++) {
         try { return Invoke-MgGraphRequest -Method GET -Uri $Uri -OutputType PSObject -ErrorAction Stop }
         catch {
-            if ($attempt -ge $delays.Count -or (Get-RKCoreGraphErrorStatus -ErrorRecord $_) -notin 500, 502) { throw }
+            if ($attempt -ge $delays.Count -or (Get-RKCoreGraphErrorStatus -ErrorRecord $_) -notin 0, 500, 502) { throw }
             Start-Sleep -Seconds $delays[$attempt]
         }
     }
@@ -61,7 +61,7 @@ function Invoke-RKCoreGraphBatch {
         $byVersion[$target.Version].Add([pscustomobject]@{ Id = [string]$request.Id; Url = "/$($target.Path)" })
     }
     foreach ($version in $byVersion.Keys) {
-        foreach ($response in (Invoke-RKGraphBatch -Requests $byVersion[$version].ToArray() -GraphVersion $version)) {
+        foreach ($response in (Invoke-RKGraphBatch -Requests $byVersion[$version].ToArray() -GraphVersion $version -Activity 'Reading Intune data from Microsoft Graph')) {
             [pscustomobject]@{ Id = [string]$response.Id; Status = [int]$response.Status; Body = $response.Body }
         }
     }

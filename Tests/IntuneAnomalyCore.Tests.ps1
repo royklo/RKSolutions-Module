@@ -624,3 +624,75 @@ Describe 'General warnings' {
         @($r.Warnings.Message) | Should -Be @('Device X could not be processed')
     }
 }
+
+Describe 'Dropped connections' {
+    It 'Invoke-RKCoreGraphRequest retries a failure without a status (dropped connection) once' {
+        InModuleScope RKSolutions {
+            $script:calls = 0
+            Mock Start-Sleep { }
+            Mock Invoke-MgGraphRequest {
+                $script:calls++
+                if ($script:calls -eq 1) { throw [System.Exception]::new('connection reset') }
+                [pscustomobject]@{ value = @(1) }
+            }
+            @(Invoke-RKCoreGraphRequest -Uri 'beta/x' -All) | Should -Be @(1)
+            Should -Invoke Invoke-MgGraphRequest -Times 2 -Exactly
+        }
+    }
+}
+
+Describe 'Get-RKIntuneAnomaly' {
+    BeforeAll {
+        $script:anomalyData = {
+            param($Keys = $true, $Laps = $true, $Apps = $true)
+            $policy = [pscustomobject]@{ DisplayName = 'P'; Source = 'Catalog'; Assignments = @(
+                    [pscustomobject]@{ AssignmentType = 'All Devices' }
+                    [pscustomobject]@{ AssignmentType = 'Group (Exclude)'; GroupId = 'g1' }) }
+            $ctx = [pscustomobject]@{
+                EntraDeviceIdByName = @{}; Filters = @{}; GroupUserUpns = @{}
+                GroupDeviceAadIds = @{ g1 = [System.Collections.Generic.HashSet[string]]::new([string[]]@('aad1')) }
+                BitLockerPolicies = @($policy); BitLockerKeyDeviceIds = [System.Collections.Generic.HashSet[string]]::new()
+                LapsPolicies = @($policy); LapsCredentialByDeviceId = @{}; LapsCredentialByDeviceName = @{}
+                ConfigurationPolicies = @()
+            }
+            [pscustomobject]@{
+                TenantName = 'T'; CollectedAt = [datetime]'2026-10-25'
+                Devices = @([pscustomobject]@{ Customer = 'T'; DeviceName = 'E1'; AzureAdDeviceId = 'aad1'; Encrypted = $false; PrimaryUser = 'u@t'; Serialnumber = 'S'; IsCloudPC = $false; LastContact = Get-Date; DeviceHashUploaded = $true; DeviceAssociated = $false; usersLoggedOnCount = 1; OperatingSystemEdition = 'Pro'; OSFriendlyname = 'W11' })
+                Users = @(); AutopilotProfiles = @(); Apps = @(); SecurityKeyContext = $ctx
+                Warnings = @([pscustomobject]@{ Area = 'BitLocker'; Message = 'same' }, [pscustomobject]@{ Area = 'BitLocker'; Message = 'same' })
+                BitLockerKeysReadable = $Keys; LapsCredentialsReadable = $Laps; AppsReadable = $Apps
+            }
+        }
+    }
+    BeforeEach {
+        Mock -ModuleName RKSolutions Get-MgContext { [pscustomobject]@{ TenantId = 't' } }
+        Mock -ModuleName RKSolutions Get-RKIntuneAnomalyData { & $script:anomalyData $false $true $false }
+    }
+    It 'returns Info rows only with -ShowExcludedDevices' {
+        @((Get-RKIntuneAnomaly).BitLocker) | Should -BeNullOrEmpty
+        @((Get-RKIntuneAnomaly).Laps) | Should -BeNullOrEmpty
+        @((Get-RKIntuneAnomaly -ShowExcludedDevices).BitLocker).Severity | Should -Be 'Info'
+        @((Get-RKIntuneAnomaly -ShowExcludedDevices).Laps).Severity | Should -Be 'Info'
+    }
+    It 'returns an empty category as an empty array, not $null' {
+        $a = Get-RKIntuneAnomaly
+        foreach ($p in 'Noncompliant', 'MissingAutopilot', 'MultiUser', 'AppInstallFailures', 'DeprecatedSettings', 'DisabledPrimaryUser') {
+            ($null -ne $a.$p) | Should -BeTrue -Because $p
+            $a.$p -is [array] | Should -BeTrue -Because $p
+            $a.$p.Count | Should -Be 0
+        }
+    }
+    It 'removes duplicate warnings' {
+        @((Get-RKIntuneAnomaly).Warnings).Count | Should -Be 1
+    }
+    It 'passes the Readable flags through' {
+        $a = Get-RKIntuneAnomaly
+        $a.BitLockerKeysReadable | Should -BeFalse
+        $a.LapsCredentialsReadable | Should -BeTrue
+        $a.AppsReadable | Should -BeFalse
+    }
+    It 'throws without a Graph context' {
+        Mock -ModuleName RKSolutions Get-MgContext { $null }
+        { Get-RKIntuneAnomaly } | Should -Throw '*Connect-RKGraph*'
+    }
+}

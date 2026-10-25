@@ -1,7 +1,7 @@
 # Core
 
 The files in this folder are copied into the RKSolutions Maester pack (royklo/maester-pack-rksolutions) by
-tools/Sync-Core.ps1. They follow the Maester pack rules:
+tools/Sync-Core.ps1 (that script lives in the pack repository). They follow the Maester pack rules:
 
 - only function definitions at the top level; script-scope values are created by Initialize-RKIntuneCoreState;
 - Microsoft Graph is only read, and only through Invoke-RKCoreGraphRequest and Invoke-RKCoreGraphBatch;

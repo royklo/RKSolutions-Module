@@ -11,11 +11,13 @@ module/
 ├── RKSolutions.psd1           # Module manifest
 ├── RKSolutions.psm1           # Root script (dot-sources Public + Private)
 ├── README.md                  # This file
+├── Core/                      # Intune anomaly detection shared with the Maester pack (see Core/README.md)
 ├── Public/                    # Exported cmdlets
 │   ├── Connect-RKGraph.ps1
 │   ├── Disconnect-RKGraph.ps1
 │   ├── Get-IntuneEnrollmentFlowsReport.ps1
 │   ├── Get-IntuneAnomaliesReport.ps1
+│   ├── Get-RKIntuneAnomaly.ps1
 │   ├── Get-EntraAdminRolesReport.ps1
 │   ├── Get-M365LicenseAssignmentReport.ps1
 │   └── Get-CustomSecurityAttributesReport.ps1
@@ -23,6 +25,7 @@ module/
     ├── Connect-ToMgGraph.ps1
     ├── Invoke-RKSolutionsWithConnection.ps1
     ├── Invoke-GraphRequestWithPaging.ps1
+    ├── RKCoreGraphAdapter.ps1
     ├── Send-EmailWithAttachment.ps1
     ├── ConvertTo-DateString.ps1
     ├── Install-Requirements.ps1

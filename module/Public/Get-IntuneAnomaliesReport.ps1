@@ -39,6 +39,8 @@ try {
     if (-not $anomaly.LapsCredentialsReadable) { $notices.Add('Windows LAPS credentials could not be read (DeviceLocalCredential.ReadBasic.All is missing). The LAPS tab cannot tell which devices backed up a password.') }
     if (-not $anomaly.AppsReadable) { $notices.Add('Apps could not be read (DeviceManagementApps.Read.All is missing). The Application Failures tab is empty.') }
     foreach ($w in $anomaly.Warnings) { $notices.Add("$($w.Area): $($w.Message)") }
+    # A warning recorded under several areas has the same text.
+    $notices = [System.Collections.Generic.List[string]]@($notices | Select-Object -Unique)
     foreach ($n in $notices) { Write-Warning $n }
 
     $swPhase.Restart()
