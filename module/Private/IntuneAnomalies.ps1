@@ -188,10 +188,9 @@ function New-IntuneAnomaliesHTMLReport {
     }
 
     # Generate table rows for deprecated Settings Catalog settings.
-    # Customer / ConfiguredValue / DetectionSource intentionally omitted - they're
-    # either constant (Customer) or redundant with the Setting Definition ID for
-    # the common choice-setting case where Value == DefId + "_<n>". The full
-    # record still carries those fields for downstream consumers.
+    # Customer / ConfiguredValue / DetectionSource intentionally omitted - Customer
+    # is constant here. The full record still carries those fields for downstream
+    # consumers such as the Maester pack, which shows ConfiguredValue.
     $deprecatedSettingsRows = ""
     foreach ($item in $Report_DeprecatedSettings) {
         $deprecatedSettingsRows += @"
