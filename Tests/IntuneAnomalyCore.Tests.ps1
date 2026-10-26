@@ -501,7 +501,7 @@ Describe 'Resolvers' {
         @($r.Rows).SettingDisplayName | Should -Be @('Old thing (Deprecated)')
         @($r.Rows)[0].DetectionSource | Should -Be 'CatalogDisplayName'
     }
-    It 'Deprecated: shows the option label as the configured value, else the part after the definition id' {
+    It 'Deprecated: shows the option label as the configured value, else the part after the definition id, and keeps simple values' {
         $r = InModuleScope RKSolutions {
             $choice = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
             $policy = [pscustomobject]@{ id = 'p1'; name = 'Pol'; platforms = 'macOS'; settings = @(
@@ -512,11 +512,15 @@ Describe 'Resolvers' {
                     [pscustomobject]@{
                         settingInstance    = [pscustomobject]@{ '@odata.type' = $choice; settingDefinitionId = 'def_b'; choiceSettingValue = [pscustomobject]@{ value = 'def_b_1' } }
                         settingDefinitions = @([pscustomobject]@{ id = 'def_b'; displayName = 'B (Deprecated)' })
+                    }
+                    [pscustomobject]@{
+                        settingInstance    = [pscustomobject]@{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance'; settingDefinitionId = 'def_c'; simpleSettingValue = [pscustomobject]@{ value = 'def_c_custom' } }
+                        settingDefinitions = @([pscustomobject]@{ id = 'def_c'; displayName = 'C (Deprecated)' })
                     }) }
             $d = [pscustomobject]@{ TenantName = 'T'; SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @($policy) }; Warnings = @() }
             Resolve-IntuneDeprecatedAnomalies -Data $d
         }
-        @($r.Rows).ConfiguredValue | Should -Be @('False', '1')
+        @($r.Rows).ConfiguredValue | Should -Be @('False', '1', 'def_c_custom')
     }
 }
 

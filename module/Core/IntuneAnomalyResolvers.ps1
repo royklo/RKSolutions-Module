@@ -495,7 +495,8 @@ function Get-IntuneSettingDeprecations {
         $hits.Add([PSCustomObject]@{
             DefinitionId = $defId
             DisplayName  = if ([string]::IsNullOrWhiteSpace($check.DisplayName)) { $defId } else { $check.DisplayName }
-            Value        = Get-IntuneSettingValueLabel -DefinitionId $defId -Value $value -Catalog $Catalog
+            # Only choice values are option ids; a simple value is what the admin typed and stays as it is.
+            Value        = if ([string]$SettingInstance.'@odata.type' -like '*choiceSetting*') { Get-IntuneSettingValueLabel -DefinitionId $defId -Value $value -Catalog $Catalog } else { $value }
             Source       = $check.Source
         })
     }
