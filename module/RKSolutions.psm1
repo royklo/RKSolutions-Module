@@ -42,7 +42,7 @@ if (Test-Path $privatePath) {
     }
     # Report-specific private scripts. They do not depend on each other; the list is only the load order.
     # Get-DetailedPolicyAssignments and Test-IntuneFilter live in Core/IntunePolicyAssignment.ps1.
-    $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'Get-ApplicationFailures.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1', 'CustomSecurityAttributes.ps1')
+    $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'Get-ApplicationFailures.ps1', 'Get-RKIntuneAnomaly.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1', 'CustomSecurityAttributes.ps1')
     foreach ($name in $domainOrder) {
         $fp = Join-Path $privatePath $name
         if (Test-Path $fp) { . $fp }
@@ -68,7 +68,6 @@ Export-ModuleMember -Function @(
     'Disconnect-RKGraph',
     'Get-IntuneEnrollmentFlowsReport',
     'Get-IntuneAnomaliesReport',
-    'Get-RKIntuneAnomaly',
     'Get-EntraAdminRolesReport',
     'Get-M365LicenseAssignmentReport',
     'Get-CustomSecurityAttributesReport'

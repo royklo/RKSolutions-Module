@@ -620,13 +620,13 @@ Describe 'Get-RKIntuneAnomaly' {
         Mock -ModuleName RKSolutions Get-ApplicationFailures { }
     }
     It 'returns Info rows only with -ShowExcludedDevices' {
-        @((Get-RKIntuneAnomaly).BitLocker) | Should -BeNullOrEmpty
-        @((Get-RKIntuneAnomaly).Laps) | Should -BeNullOrEmpty
-        @((Get-RKIntuneAnomaly -ShowExcludedDevices).BitLocker).Severity | Should -Be 'Info'
-        @((Get-RKIntuneAnomaly -ShowExcludedDevices).Laps).Severity | Should -Be 'Info'
+        @((InModuleScope RKSolutions { Get-RKIntuneAnomaly }).BitLocker) | Should -BeNullOrEmpty
+        @((InModuleScope RKSolutions { Get-RKIntuneAnomaly }).Laps) | Should -BeNullOrEmpty
+        @((InModuleScope RKSolutions { Get-RKIntuneAnomaly -ShowExcludedDevices }).BitLocker).Severity | Should -Be 'Info'
+        @((InModuleScope RKSolutions { Get-RKIntuneAnomaly -ShowExcludedDevices }).Laps).Severity | Should -Be 'Info'
     }
     It 'returns an empty category as an empty array, not $null' {
-        $a = Get-RKIntuneAnomaly
+        $a = InModuleScope RKSolutions { Get-RKIntuneAnomaly }
         foreach ($p in 'Noncompliant', 'MissingAutopilot', 'MultiUser', 'AppInstallFailures', 'DeprecatedSettings', 'DisabledPrimaryUser') {
             ($null -ne $a.$p) | Should -BeTrue -Because $p
             $a.$p -is [array] | Should -BeTrue -Because $p
@@ -634,17 +634,17 @@ Describe 'Get-RKIntuneAnomaly' {
         }
     }
     It 'removes duplicate warnings' {
-        @((Get-RKIntuneAnomaly).Warnings).Count | Should -Be 1
+        @((InModuleScope RKSolutions { Get-RKIntuneAnomaly }).Warnings).Count | Should -Be 1
     }
     It 'passes the Readable flags through' {
-        $a = Get-RKIntuneAnomaly
+        $a = InModuleScope RKSolutions { Get-RKIntuneAnomaly }
         $a.BitLockerKeysReadable | Should -BeFalse
         $a.LapsCredentialsReadable | Should -BeTrue
         $a.AppsReadable | Should -BeTrue
     }
     It 'takes AppInstallFailures from Get-ApplicationFailures' {
         Mock -ModuleName RKSolutions Get-ApplicationFailures { [pscustomobject]@{ Application = 'A'; FailedDeviceCount = 3 } }
-        $a = Get-RKIntuneAnomaly
+        $a = InModuleScope RKSolutions { Get-RKIntuneAnomaly }
         @($a.AppInstallFailures).Application | Should -Be @('A')
         Should -Invoke Get-ApplicationFailures -ModuleName RKSolutions -ParameterFilter { $TenantName -eq 'T' }
     }
@@ -654,18 +654,18 @@ Describe 'Get-RKIntuneAnomaly' {
             $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 403 })
             throw $e
         }
-        $a = Get-RKIntuneAnomaly
+        $a = InModuleScope RKSolutions { Get-RKIntuneAnomaly }
         $a.AppsReadable | Should -BeFalse
         $a.AppInstallFailures -is [array] | Should -BeTrue
         $a.AppInstallFailures.Count | Should -Be 0
     }
     It 'throws when the app report fails with another error' {
         Mock -ModuleName RKSolutions Get-ApplicationFailures { throw 'http 500' }
-        { Get-RKIntuneAnomaly } | Should -Throw '*http 500*'
+        { InModuleScope RKSolutions { Get-RKIntuneAnomaly } } | Should -Throw '*http 500*'
     }
     It 'throws without a Graph context' {
         Mock -ModuleName RKSolutions Get-MgContext { $null }
-        { Get-RKIntuneAnomaly } | Should -Throw '*Connect-RKGraph*'
+        { InModuleScope RKSolutions { Get-RKIntuneAnomaly } } | Should -Throw '*Connect-RKGraph*'
     }
 }
 

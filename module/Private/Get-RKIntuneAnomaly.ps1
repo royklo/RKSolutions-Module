@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Returns the Intune anomalies of the connected tenant as objects, one property per category.
+    Private: returns the Intune anomalies of the connected tenant as objects, one property per category.
 
 .DESCRIPTION
     Collects the Windows devices, BitLocker and LAPS state and Settings Catalog policies once, reads the failed app installs from the Intune app install status report (top 50 by failed devices), and returns:
@@ -17,9 +17,6 @@
 
 .PARAMETER ShowExcludedDevices
     Also return devices that a BitLocker or LAPS policy leaves out on purpose (exclude group or filter), as Info rows.
-
-.EXAMPLE
-    Get-RKIntuneAnomaly | Select-Object -ExpandProperty BitLocker | Export-Csv bitlocker.csv
 #>
 function Get-RKIntuneAnomaly {
     [CmdletBinding()]

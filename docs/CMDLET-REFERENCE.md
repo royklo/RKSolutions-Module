@@ -76,27 +76,6 @@ Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection
 
 ---
 
-## Get-RKIntuneAnomaly
-
-Returns the Intune anomalies of the connected tenant as objects, one property per category.
-
-Collects the Windows devices, BitLocker and LAPS state and Settings Catalog policies once, reads the failed app installs from the Intune app install status report (top 50 by failed devices), and returns: BitLocker, Laps, Noncompliant, Inactive, DisabledPrimaryUser, MissingAutopilot, MultiUser, AppInstallFailures, DeprecatedSettings and OperatingSystemEditions (rows), plus Warnings and the BitLockerKeysReadable, LapsCredentialsReadable and AppsReadable flags. Get-IntuneAnomaliesReport renders the same object as HTML.
-
-
-| Parameter                | Description                                                                                                         |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| **InactiveDays**         | A device whose last Intune sync is older than this many days is inactive. Default 90.                               |
-| **MaxLapsBackupAgeDays** | A LAPS backup older than this many days is stale. Default 60.                                                       |
-| **ShowExcludedDevices**  | Also return devices that a BitLocker or LAPS policy leaves out on purpose (exclude group or filter), as Info rows.  |
-
-Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
-
-
-**Examples:**
-- `Get-RKIntuneAnomaly | Select-Object -ExpandProperty BitLocker | Export-Csv bitlocker.csv`
-
----
-
 ## Get-EntraAdminRolesReport
 
 Generates Entra admin roles report.

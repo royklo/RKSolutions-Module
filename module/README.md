@@ -17,7 +17,6 @@ module/
 │   ├── Disconnect-RKGraph.ps1
 │   ├── Get-IntuneEnrollmentFlowsReport.ps1
 │   ├── Get-IntuneAnomaliesReport.ps1
-│   ├── Get-RKIntuneAnomaly.ps1
 │   ├── Get-EntraAdminRolesReport.ps1
 │   ├── Get-M365LicenseAssignmentReport.ps1
 │   └── Get-CustomSecurityAttributesReport.ps1
@@ -33,6 +32,7 @@ module/
     ├── Get-RKSolutionsReportTemplate.ps1
     ├── IntuneEnrollmentFlows.ps1
     ├── IntuneAnomalies.ps1
+    ├── Get-RKIntuneAnomaly.ps1
     ├── EntraAdminRoles.ps1
     ├── M365License.ps1
     └── CustomSecurityAttributes.ps1
