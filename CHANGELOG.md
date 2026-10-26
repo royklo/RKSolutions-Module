@@ -8,14 +8,26 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 ## Unreleased
 
-- Deprecated settings now read setting display names from Microsoft Graph instead of a download.
-- A missing BitLocker or LAPS permission is now shown as a notice instead of flagging every device: unreadable BitLocker keys show `KeyEscrowed = Unknown` and unreadable LAPS passwords raise no backup anomaly. A missing app permission leaves the Application Failures tab empty with a notice instead of stopping the report.
-- `Get-IntuneAnomaliesReport -DebugMode` has no effect any more; use `-Verbose`. Progress messages moved to `-Verbose` too.
-- The report no longer stops silently at 10,000 devices or users.
-- Fixed: *Multiple Users* no longer lists devices without an enrollment profile on tenants that have no single-user Autopilot profile.
-- A device that cannot be processed, and a Settings Catalog settings read that `$batch` rejects, no longer disappear or stop the report: the device is reported as a notice and the read is retried directly.
-- Dropped connections and timeouts are retried like 500 and 502 errors.
-- Graph errors in required reads now stop the report instead of being silently ignored.
+## [1.3.0] - 2026-10-26
+
+Release for the Intune Anomalies report.
+
+### Changes
+
+- **Missing BitLocker, LAPS or app permissions show a notice** instead of flagging every device or stopping the report. Unreadable BitLocker keys show `KeyEscrowed = Unknown`.
+- **Failed required Graph reads stop the report** instead of producing a half-empty one.
+- **`-DebugMode` has no effect any more.** Use `-Verbose`, which now also shows the progress messages.
+- **Deprecated settings take their names from Microsoft Graph** instead of a download.
+
+### Fixes
+
+- **A tenant without a BitLocker or LAPS policy no longer crashes the report.**
+- **The report no longer stops silently at 10,000 devices or users.**
+- ***Multiple Users* no longer lists devices without an enrollment profile** on tenants without a single-user Autopilot profile.
+- **One device that cannot be processed no longer stops the report**; it is listed as a notice.
+- **Dropped connections, timeouts and rejected `$batch` reads are retried.**
+
+---
 
 ## [1.2.2] - 2026-09-24
 
