@@ -8,6 +8,10 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 ## Unreleased
 
+### Fixes
+
+- **Deprecated settings carry the configured value by its Intune name** (`False` instead of `com.apple.applicationaccess_allowgenmoji_false`). The Maester pack shows it; the HTML report does not show this column.
+
 ## [1.3.0] - 2026-10-26
 
 Release for the Intune Anomalies report.

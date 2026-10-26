@@ -501,6 +501,23 @@ Describe 'Resolvers' {
         @($r.Rows).SettingDisplayName | Should -Be @('Old thing (Deprecated)')
         @($r.Rows)[0].DetectionSource | Should -Be 'CatalogDisplayName'
     }
+    It 'Deprecated: shows the option label as the configured value, else the part after the definition id' {
+        $r = InModuleScope RKSolutions {
+            $choice = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
+            $policy = [pscustomobject]@{ id = 'p1'; name = 'Pol'; platforms = 'macOS'; settings = @(
+                    [pscustomobject]@{
+                        settingInstance    = [pscustomobject]@{ '@odata.type' = $choice; settingDefinitionId = 'def_a'; choiceSettingValue = [pscustomobject]@{ value = 'def_a_false' } }
+                        settingDefinitions = @([pscustomobject]@{ id = 'def_a'; displayName = 'A (Deprecated)'; options = @([pscustomobject]@{ itemId = 'def_a_false'; displayName = 'False' }) })
+                    }
+                    [pscustomobject]@{
+                        settingInstance    = [pscustomobject]@{ '@odata.type' = $choice; settingDefinitionId = 'def_b'; choiceSettingValue = [pscustomobject]@{ value = 'def_b_1' } }
+                        settingDefinitions = @([pscustomobject]@{ id = 'def_b'; displayName = 'B (Deprecated)' })
+                    }) }
+            $d = [pscustomobject]@{ TenantName = 'T'; SecurityKeyContext = [pscustomobject]@{ ConfigurationPolicies = @($policy) }; Warnings = @() }
+            Resolve-IntuneDeprecatedAnomalies -Data $d
+        }
+        @($r.Rows).ConfiguredValue | Should -Be @('False', '1')
+    }
 }
 
 Describe 'Unreadable keys, settings fallback and null children' {
