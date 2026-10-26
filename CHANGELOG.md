@@ -14,7 +14,7 @@ Release for the Intune Anomalies report.
 
 ### Changes
 
-- **Missing BitLocker, LAPS or app permissions show a notice** instead of flagging every device or stopping the report. Unreadable BitLocker keys show `KeyEscrowed = Unknown`.
+- **Access denied on BitLocker keys, LAPS credentials or apps shows a notice** instead of flagging every device or stopping the report. Unreadable BitLocker keys show `KeyEscrowed = Unknown`.
 - **Failed required Graph reads stop the report** instead of producing a half-empty one.
 - **`-DebugMode` has no effect any more.** Use `-Verbose`, which now also shows the progress messages.
 - **Deprecated settings take their names from Microsoft Graph** instead of a download.

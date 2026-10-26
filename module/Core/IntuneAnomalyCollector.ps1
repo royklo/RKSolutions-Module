@@ -142,14 +142,12 @@ function Get-AllDeviceData {
         if ($ci.importedDeviceIdentifier) { [void]$CorporateIdentifierSerials.Add(($ci.importedDeviceIdentifier -split ',')[-1].Trim()) }
     }
 
-    # Only devices that BitLocker or Autopilot would flag need their deviceType: the list endpoint always reports
-    # 'windowsRT', and only a per-device GET returns 'cloudPC' (Windows 365 and Dev Box).
+    # The list endpoint always reports 'windowsRT'; only a per-device GET returns 'cloudPC' (Windows 365 and Dev Box).
+    # BitLocker and Autopilot both skip Cloud PCs, so every device needs its deviceType.
+    # ponytail: one deviceType read per device (exact, as 1.2.2). In the pack each is a separate GET; if large tenants get slow, narrow to the devices BitLocker or Autopilot would flag once the BitLocker context is known.
     $swStep.Restart()
-    $candidates = @($AllDeviceData | Where-Object {
-            -not $_.isEncrypted -or (-not $AutopilotLookup.ContainsKey([string]$_.serialNumber) -and -not ($_.serialNumber -and $CorporateIdentifierSerials.Contains([string]$_.serialNumber)))
-        })
     $CloudPcIds = [System.Collections.Generic.HashSet[string]]::new()
-    $deviceTypeRequests = @(foreach ($d in $candidates) { [pscustomobject]@{ Id = "dt:$($d.id)"; Url = "beta/deviceManagement/managedDevices/$($d.id)?`$select=id,deviceType" } })
+    $deviceTypeRequests = @(foreach ($d in $AllDeviceData) { [pscustomobject]@{ Id = "dt:$($d.id)"; Url = "beta/deviceManagement/managedDevices/$($d.id)?`$select=id,deviceType" } })
     $failedLookups = 0
     foreach ($resp in @(Invoke-RKCoreGraphBatch -Requests $deviceTypeRequests)) {
         if ($resp.Status -ne 200) { $failedLookups++; continue }
@@ -159,7 +157,7 @@ function Get-AllDeviceData {
         foreach ($area in 'BitLocker', 'Autopilot') { $Warnings.Add([pscustomobject]@{ Area = $area; Message = "The device type of $failedLookups device(s) could not be read; they are treated as physical devices, so a Cloud PC among them can be listed." }) }
     }
     $swStep.Stop()
-    Write-Verbose ("[Get-AllDeviceData] Device type lookup: {0:N2}s ({1} candidates, {2} Cloud PCs)" -f $swStep.Elapsed.TotalSeconds, $candidates.Count, $CloudPcIds.Count)
+    Write-Verbose ("[Get-AllDeviceData] Device type lookup: {0:N2}s ({1} devices, {2} Cloud PCs)" -f $swStep.Elapsed.TotalSeconds, $AllDeviceData.Count, $CloudPcIds.Count)
 
     # Pre-build user lookup hashtable (id -> UPN) for O(1) lookups
     $UserLookup = @{}
@@ -648,7 +646,7 @@ function Get-BitLockerLapsAssignmentContext {
     }
 
     # 6. BitLocker recovery keys. OS-volume key (volumeType == 1) is what protects the system drive.
-    #    A missing scope (BitlockerKey.ReadBasic.All, 401/403) sets BitLockerKeysReadable instead of
+    #    Access denied (401/403: the scope BitlockerKey.ReadBasic.All or a role is missing) sets BitLockerKeysReadable instead of
     #    reading as an empty key list; any other error throws.
     Write-Verbose '  Fetching BitLocker recovery key index (OS volume)...'
     $bitLockerFetched = 0
@@ -669,7 +667,7 @@ function Get-BitLockerLapsAssignmentContext {
 
     # 7. LAPS local credentials directory. Entry's `id` field IS the Azure AD device id
     #    (verified against live Graph). Key the hashtable by it directly.
-    #    A missing scope (DeviceLocalCredential.ReadBasic.All, 401/403) sets LapsCredentialsReadable.
+    #    Access denied (401/403: the scope DeviceLocalCredential.ReadBasic.All or a role is missing) sets LapsCredentialsReadable.
     Write-Verbose '  Fetching directory/deviceLocalCredentials (Windows LAPS)...'
     $lapsFetched = 0
     try {

@@ -242,6 +242,21 @@ Describe 'Collector logic' {
             $w.Count | Should -Be 0
         }
     }
+    It 'Get-AllDeviceData marks an encrypted Cloud PC that has an Autopilot record as IsCloudPC' {
+        InModuleScope RKSolutions {
+            Mock Invoke-RKCoreGraphRequest { }
+            Mock Invoke-RKCoreGraphBatch { }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -like 'beta/deviceManagement/managedDevices?*' } {
+                [pscustomobject]@{ id = 'c1'; deviceName = 'CPC1'; serialNumber = 'S9'; isEncrypted = $true; complianceState = 'compliant'; managementAgent = 'mdm' }
+            }
+            Mock Invoke-RKCoreGraphRequest -ParameterFilter { $Uri -eq 'beta/deviceManagement/windowsAutopilotDeviceIdentities' } { [pscustomobject]@{ serialNumber = 'S9' } }
+            Mock Invoke-RKCoreGraphBatch -ParameterFilter { @($Requests.Url) -like '*?$select=id,deviceType' } {
+                [pscustomobject]@{ Id = 'dt:c1'; Status = 200; Body = [pscustomobject]@{ id = 'c1'; deviceType = 'cloudPC' } }
+            }
+            $w = [System.Collections.Generic.List[object]]::new()
+            @(Get-AllDeviceData -Users @() -TenantName 'T' -Warnings $w)[0].IsCloudPC | Should -BeTrue
+        }
+    }
     It 'Get-AllDeviceData asks once for the settingStates of a policy state listed twice' {
         InModuleScope RKSolutions {
             Mock Invoke-RKCoreGraphRequest { }

@@ -35,9 +35,9 @@ try {
     $tenantname = $anomaly.TenantName
 
     $notices = [System.Collections.Generic.List[string]]::new()
-    if (-not $anomaly.BitLockerKeysReadable) { $notices.Add('BitLocker recovery keys could not be read (BitlockerKey.ReadBasic.All is missing). The BitLocker tab cannot tell which keys are in Entra ID.') }
-    if (-not $anomaly.LapsCredentialsReadable) { $notices.Add('Windows LAPS credentials could not be read (DeviceLocalCredential.ReadBasic.All is missing). The LAPS tab cannot tell which devices backed up a password.') }
-    if (-not $anomaly.AppsReadable) { $notices.Add('Apps could not be read (DeviceManagementApps.Read.All is missing). The Application Failures tab is empty.') }
+    if (-not $anomaly.BitLockerKeysReadable) { $notices.Add('BitLocker recovery keys could not be read (access denied). Check that the connection has BitlockerKey.ReadBasic.All and that the account has a role that may read them, such as Global Reader. The BitLocker tab cannot tell which keys are in Entra ID.') }
+    if (-not $anomaly.LapsCredentialsReadable) { $notices.Add('Windows LAPS credentials could not be read (access denied). Check that the connection has DeviceLocalCredential.ReadBasic.All and that the account has a role that may read them, such as Global Reader. The LAPS tab cannot tell which devices backed up a password.') }
+    if (-not $anomaly.AppsReadable) { $notices.Add('Apps could not be read (access denied). Check that the connection has DeviceManagementApps.Read.All and that the account has an Intune role that may read apps, such as Global Reader. The Application Failures tab is empty.') }
     foreach ($w in $anomaly.Warnings) { $notices.Add("$($w.Area): $($w.Message)") }
     # A warning recorded under several areas has the same text.
     $notices = [System.Collections.Generic.List[string]]@($notices | Select-Object -Unique)
