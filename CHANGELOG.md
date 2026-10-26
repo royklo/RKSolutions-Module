@@ -6,6 +6,29 @@ The format follows [Conventional Commits](https://www.conventionalcommits.org/) 
 
 
 
+## Unreleased
+
+## [1.3.0] - 2026-10-26
+
+Release for the Intune Anomalies report.
+
+### Changes
+
+- **Access denied on BitLocker keys, LAPS credentials or apps shows a notice** instead of flagging every device or stopping the report. Unreadable BitLocker keys show `KeyEscrowed = Unknown`.
+- **Failed required Graph reads stop the report** instead of producing a half-empty one.
+- **`-DebugMode` has no effect any more.** Use `-Verbose`, which now also shows the progress messages.
+- **Deprecated settings take their names from Microsoft Graph** instead of a download.
+
+### Fixes
+
+- **A tenant without a BitLocker or LAPS policy no longer crashes the report.**
+- **The report no longer stops silently at 10,000 devices or users.**
+- ***Multiple Users* no longer lists devices without an enrollment profile** on tenants without a single-user Autopilot profile.
+- **One device that cannot be processed no longer stops the report**; it is listed as a notice.
+- **Dropped connections, timeouts and rejected `$batch` reads are retried.**
+
+---
+
 ## [1.2.2] - 2026-09-24
 
 Patch release for the Intune Anomalies report.

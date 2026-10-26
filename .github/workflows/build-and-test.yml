@@ -21,7 +21,7 @@ jobs:
 
       - name: Run Consistency.Tests.ps1
         run: |
-          $result = Invoke-Pester ./Tests/Consistency.Tests.ps1 -PassThru -Output Detailed
+          $result = Invoke-Pester ./Tests -PassThru -Output Detailed
           if ($result.FailedCount -gt 0) { exit 1 }
         shell: pwsh
 

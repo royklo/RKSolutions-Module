@@ -30,6 +30,7 @@ if (Test-Path $privatePath) {
         'Connect-ToMgGraph.ps1',
         'Invoke-GraphRequestWithPaging.ps1',
         'Invoke-RKGraphBatch.ps1',
+        'RKCoreGraphAdapter.ps1',
         'Send-EmailWithAttachment.ps1',
         'ConvertTo-DateString.ps1',
         'Get-RKSolutionsReportTemplate.ps1',
@@ -39,14 +40,20 @@ if (Test-Path $privatePath) {
         $fp = Join-Path $privatePath $name
         if (Test-Path $fp) { . $fp }
     }
-    # Report-specific private scripts. IntuneAnomalies leans on helpers
-    # (Get-DetailedPolicyAssignments, Test-IntuneFilter, $script:AllFilters) defined
-    # in IntuneEnrollmentFlows, so it must be loaded after it.
-    $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1', 'CustomSecurityAttributes.ps1')
+    # Report-specific private scripts. They do not depend on each other; the list is only the load order.
+    # Get-DetailedPolicyAssignments and Test-IntuneFilter live in Core/IntunePolicyAssignment.ps1.
+    $domainOrder = @('IntuneEnrollmentFlows.ps1', 'IntuneAnomalies.ps1', 'Get-ApplicationFailures.ps1', 'Get-RKIntuneAnomaly.ps1', 'EntraAdminRoles.ps1', 'M365License.ps1', 'CustomSecurityAttributes.ps1')
     foreach ($name in $domainOrder) {
         $fp = Join-Path $privatePath $name
         if (Test-Path $fp) { . $fp }
     }
+}
+
+# Intune anomaly core: pack-proof files shared with the RKSolutions Maester pack (see module/Core/README.md).
+$corePath = Join-Path $moduleRoot 'Core'
+if (Test-Path $corePath) {
+    Get-ChildItem -Path $corePath -Filter '*.ps1' -File | Sort-Object Name | ForEach-Object { . $_.FullName }
+    Initialize-RKIntuneCoreState
 }
 
 # Load Public scripts (exported cmdlets)

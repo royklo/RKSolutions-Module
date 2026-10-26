@@ -1,6 +1,6 @@
 @{
     RootModule        = 'RKSolutions.psm1'
-    ModuleVersion     = '1.2.2'
+    ModuleVersion     = '1.3.0'
     GUID              = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
     Author            = 'Roy Klooster'
     CompanyName       = 'RK Solutions'
@@ -26,6 +26,7 @@
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/royklo/RKSolutions-Module'
             ReleaseNotes = @'
+1.3.0 - Intune Anomalies: a tenant without a BitLocker or LAPS policy no longer crashes the report, missing BitLocker, LAPS or app permissions show a notice instead of flagging every device or stopping the report, and the report no longer stops silently at 10,000 devices or users. Failed required Graph reads now stop the report. -DebugMode has no effect any more; use -Verbose.
 1.2.2 - Intune Anomalies: recognises Autopilot device preparation (v2), leaves Cloud PCs out of the BitLocker and Autopilot tabs, explains on every tab what it checks, and shows noncompliant reasons with their Intune admin-center names. Fixed "Unknown" noncompliant reasons and application failure percentages that were 100 times too small.
 1.2.1 - Intune Anomalies: fixed missing noncompliant reasons and a ~60s hang on tenants with noncompliant devices. Long values now wrap inside table cells in every report.
 1.2.0 - Intune Anomalies: added BitLocker key escrow, Windows LAPS backup and deprecated Settings Catalog settings detection, and a much faster report via Graph $batch. Added BitlockerKey.ReadBasic.All and DeviceLocalCredential.ReadBasic.All scopes.

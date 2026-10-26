@@ -64,7 +64,7 @@ Generates an interactive HTML report covering Intune app failures, multi-user de
 | **From**                | From address.                                                                                                                                              |
 | **ExportPath**          | Output file path.                                                                                                                                          |
 | **ShowExcludedDevices** | Also surface devices that were *deliberately* excluded from BitLocker / LAPS policies (via exclude group or assignment filter) as Info-severity rows. Off by default so the report stays focused on actual anomalies. |
-| **DebugMode**           | Enable debug output.                                                                                                                                       |
+| **DebugMode**           | No effect; kept for compatibility. Use -Verbose.                                                                                                           |
 
 Connect first with **Connect-RKGraph**; this cmdlet uses the existing connection (no auth parameters).
 

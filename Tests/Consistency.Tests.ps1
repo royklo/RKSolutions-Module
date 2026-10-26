@@ -199,7 +199,8 @@ Describe 'BitLocker / LAPS anomaly resolver output contracts' {
                 DeviceManufacturer = 'TestCorp'
                 DeviceModel        = 'TestModel'
             }
-            $rows = Resolve-IntuneBitLockerAnomalies -Devices @($d) -Context $ctx -TenantName 'TestTenant'
+            $data = [PSCustomObject]@{ TenantName = 'TestTenant'; Devices = @($d); SecurityKeyContext = $ctx; Warnings = @() }
+            $rows = (Resolve-IntuneBitLockerAnomalies -Data $data).Rows
             $rows[0]
         }
         $row | Should -Not -BeNullOrEmpty -Because 'an unencrypted device with no aadId must surface as an anomaly row'
@@ -254,7 +255,8 @@ Describe 'BitLocker / LAPS anomaly resolver output contracts' {
                 DeviceModel        = 'TestModel'
                 DeviceOwnership    = 'company'   # matches Get-AllDeviceData's output property
             }
-            $rows = Resolve-IntuneLapsAnomalies -Devices @($d) -Context $ctx -TenantName 'TestTenant'
+            $data = [PSCustomObject]@{ TenantName = 'TestTenant'; Devices = @($d); SecurityKeyContext = $ctx; Warnings = @() }
+            $rows = (Resolve-IntuneLapsAnomalies -Data $data).Rows
             $rows[0]
         }
         $row | Should -Not -BeNullOrEmpty -Because 'a device covered by a LAPS policy with no credential must surface'

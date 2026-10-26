@@ -33,10 +33,12 @@ RKSolutions-Module/
 │   ├── RKSolutions.psd1
 │   ├── RKSolutions.psm1
 │   ├── README.md
+│   ├── Core/                 # Intune anomaly detection shared with the Maester pack
 │   ├── Public/               # Exported cmdlets
 │   └── Private/              # Helpers
 └── Tests/
-    └── Consistency.Tests.ps1 # Pester tests
+    ├── Consistency.Tests.ps1 # Pester tests
+    └── IntuneAnomalyCore.Tests.ps1 # Pester tests for module/Core and the Graph adapter
 ```
 
 ## Prerequisites

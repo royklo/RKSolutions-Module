@@ -4,6 +4,7 @@
     Connect first with Connect-RKGraph; this cmdlet uses the existing connection.
 #>
 function Get-IntuneAnomaliesReport {
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'DebugMode', Justification = 'Kept for compatibility')]
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $false)] [switch] $SendEmail,
@@ -15,6 +16,7 @@ param(
     # so the report stays focused on actual anomalies; intentional exclusions are
     # admin choices, not gaps.
     [Parameter(Mandatory = $false)] [switch] $ShowExcludedDevices,
+    # Kept so existing scripts keep working; has no effect. Use -Verbose for timings.
     [Parameter(Mandatory = $false)] [switch] $DebugMode
 )
 
@@ -26,68 +28,23 @@ try {
     $ctx = Get-MgContext -ErrorAction SilentlyContinue
     if (-not $ctx) { throw 'Not connected to Microsoft Graph. Run Connect-RKGraph first.' }
 
-    $tenantInfo = Invoke-MgGraphRequest -Uri 'beta/organization' -Method Get -OutputType PSObject
-    $tenantname = $tenantInfo.value[0].displayName
+    Write-Host 'Collecting Intune anomaly data...' -ForegroundColor Yellow
+    $swPhase.Restart()
+    $anomaly = Get-RKIntuneAnomaly -ShowExcludedDevices:$ShowExcludedDevices
+    $swPhase.Stop(); Write-Verbose ("[Report] Get-RKIntuneAnomaly: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
+    $tenantname = $anomaly.TenantName
+
+    $notices = [System.Collections.Generic.List[string]]::new()
+    if (-not $anomaly.BitLockerKeysReadable) { $notices.Add('BitLocker recovery keys could not be read (access denied). Check that the connection has BitlockerKey.ReadBasic.All and that the account has a role that may read them, such as Global Reader. The BitLocker tab cannot tell which keys are in Entra ID.') }
+    if (-not $anomaly.LapsCredentialsReadable) { $notices.Add('Windows LAPS credentials could not be read (access denied). Check that the connection has DeviceLocalCredential.ReadBasic.All and that the account has a role that may read them, such as Global Reader. The LAPS tab cannot tell which devices backed up a password.') }
+    if (-not $anomaly.AppsReadable) { $notices.Add('Apps could not be read (access denied). Check that the connection has DeviceManagementApps.Read.All and that the account has an Intune role that may read apps, such as Global Reader. The Application Failures tab is empty.') }
+    foreach ($w in $anomaly.Warnings) { $notices.Add("$($w.Area): $($w.Message)") }
+    # A warning recorded under several areas has the same text.
+    $notices = [System.Collections.Generic.List[string]]@($notices | Select-Object -Unique)
+    foreach ($n in $notices) { Write-Warning $n }
 
     $swPhase.Restart()
-    $AllEntraIDUsers = Invoke-GraphRequestWithPaging -Uri "https://graph.microsoft.com/beta/users/?`$select=id,userPrincipalName,userType,accountEnabled" | Where-Object { $_.UserType -eq 'Member' }
-    $DisabledEntraUsers = $AllEntraIDUsers | Where-Object { $_.accountEnabled -eq $false } | Select-Object id, userPrincipalName, userType, accountEnabled
-    $swPhase.Stop(); Write-Verbose ("[Report] Entra users fetch: {0:N2}s ({1} members)" -f $swPhase.Elapsed.TotalSeconds, $AllEntraIDUsers.Count)
-
-    Write-Host 'Starting device data collection...' -ForegroundColor Yellow
-    $swPhase.Restart()
-    $DeviceData = Get-AllDeviceData
-    $swPhase.Stop(); Write-Verbose ("[Report] Get-AllDeviceData: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
-
-    $swPhase.Restart()
-    $AutopilotProfilesInformation = Get-AutopilotProfilesInformation
-    $UserDrivenAutopilotProfiles = $AutopilotProfilesInformation | Where-Object { $_.outOfBoxExperienceSettings.deviceUsageType -eq 'SingleUser' }
-    $swPhase.Stop(); Write-Verbose ("[Report] Autopilot profiles: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
-
-    Write-Host 'Resolving BitLocker / Windows LAPS policy assignments and key escrow state...' -ForegroundColor Yellow
-    $swPhase.Restart()
-    $SecurityKeyContext = Get-BitLockerLapsAssignmentContext -DebugMode:$DebugMode
-    $swPhase.Stop(); Write-Verbose ("[Report] BitLocker/LAPS context: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
-
-    # Cloud PCs (Windows 365 / Dev Box) have platform-managed disk encryption and are never Autopilot-registered.
-    $PhysicalDevices = @($DeviceData | Where-Object { -not $_.IsCloudPC })
-
-    $swPhase.Restart()
-    $Report_BitLockerStatus    = Resolve-IntuneBitLockerAnomalies   -Devices $PhysicalDevices -Context $SecurityKeyContext -TenantName $tenantname -ShowExcludedDevices:$ShowExcludedDevices
-    $Report_LapsStatus         = Resolve-IntuneLapsAnomalies        -Devices $DeviceData -Context $SecurityKeyContext -TenantName $tenantname -ShowExcludedDevices:$ShowExcludedDevices
-    $Report_DeprecatedSettings = Resolve-IntuneDeprecatedAnomalies  -Context $SecurityKeyContext -TenantName $tenantname
-    $swPhase.Stop(); Write-Verbose ("[Report] BitLocker + LAPS + Deprecated resolution: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
-
-    $swPhase.Restart()
-    $Report_ApplicationFailureReport = Get-ApplicationFailures
-    $swPhase.Stop(); Write-Verbose ("[Report] Get-ApplicationFailures: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
-    $Report_DevicesWithMultipleUsers = $DeviceData | Where-Object { $_.usersLoggedOnCount -gt 1 -and $_.EnrollmentProfile -in $UserDrivenAutopilotProfiles.displayName } | Select-Object Customer, DeviceName, PrimaryUser, EnrollmentProfile, usersLoggedOnCount, usersLoggedOnIds
-    $Report_OperatingSystemEditionOverview = $DeviceData | Select-Object Customer, DeviceName, PrimaryUser, OperatingSystemEdition, OSFriendlyname
-    # Not Encrypted is now folded into the BitLocker tab - unencrypted devices
-    # show up there as 'Device not encrypted and no BitLocker policy assigned' or
-    # 'BitLocker policy assigned but device not encrypted' so we don't need a
-    # standalone tab anymore.
-    $Report_DevicesWithoutAutopilotHash = $PhysicalDevices | Where-Object { $_.DeviceHashUploaded -eq $false -and -not $_.DeviceAssociated } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
-    $Report_InactiveDevices = $DeviceData | Where-Object { $_.LastContact -lt (Get-Date).AddDays(-90) } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel, LastContact
-    $Report_DisabledPrimaryUsers = $DeviceData | Where-Object { $_.PrimaryUser -in $DisabledEntraUsers.userPrincipalName } | Select-Object Customer, DeviceName, PrimaryUser, Serialnumber, DeviceManufacturer, DeviceModel
-
-    $Report_NoncompliantDevices = [System.Collections.Generic.List[PSObject]]::new()
-    $NoncompliantDevicesRaw = $DeviceData | Where-Object { $_.ComplianceStatus -eq 'noncompliant' }
-    foreach ($device in $NoncompliantDevicesRaw) {
-        if ($device.NoncompliantBasedOn) {
-            $reasons = $device.NoncompliantBasedOn -split ', '
-            foreach ($reason in $reasons) {
-                if ($reason.Trim()) {
-                    $Report_NoncompliantDevices.Add([PSCustomObject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = $reason.Trim(); NoncompliantAlert = $device.NoncompliantAlert })
-                }
-            }
-        } else {
-            $Report_NoncompliantDevices.Add([PSCustomObject]@{ Customer = $device.Customer; DeviceName = $device.DeviceName; PrimaryUser = $device.PrimaryUser; Serialnumber = $device.Serialnumber; DeviceManufacturer = $device.DeviceManufacturer; DeviceModel = $device.DeviceModel; ComplianceStatus = $device.ComplianceStatus; NoncompliantBasedOn = 'Unknown'; NoncompliantAlert = $device.NoncompliantAlert })
-        }
-    }
-
-    $swPhase.Restart()
-    New-IntuneAnomaliesHTMLReport -TenantName $tenantname -Report_ApplicationFailureReport $Report_ApplicationFailureReport -Report_DevicesWithMultipleUsers $Report_DevicesWithMultipleUsers -Report_DevicesWithoutAutopilotHash $Report_DevicesWithoutAutopilotHash -Report_InactiveDevices $Report_InactiveDevices -Report_NoncompliantDevices $Report_NoncompliantDevices -Report_OperatingSystemEditionOverview $Report_OperatingSystemEditionOverview -Report_DisabledPrimaryUsers $Report_DisabledPrimaryUsers -Report_BitLockerStatus $Report_BitLockerStatus -Report_LapsStatus $Report_LapsStatus -Report_DeprecatedSettings $Report_DeprecatedSettings -ExportPath $ExportPath
+    New-IntuneAnomaliesHTMLReport -TenantName $tenantname -Report_ApplicationFailureReport $anomaly.AppInstallFailures -Report_DevicesWithMultipleUsers $anomaly.MultiUser -Report_DevicesWithoutAutopilotHash $anomaly.MissingAutopilot -Report_InactiveDevices $anomaly.Inactive -Report_NoncompliantDevices $anomaly.Noncompliant -Report_OperatingSystemEditionOverview $anomaly.OperatingSystemEditions -Report_DisabledPrimaryUsers $anomaly.DisabledPrimaryUser -Report_BitLockerStatus $anomaly.BitLocker -Report_LapsStatus $anomaly.Laps -Report_DeprecatedSettings $anomaly.DeprecatedSettings -Notices $notices.ToArray() -ExportPath $ExportPath
     $swPhase.Stop(); Write-Verbose ("[Report] HTML build: {0:N2}s" -f $swPhase.Elapsed.TotalSeconds)
     $swReport.Stop(); Write-Verbose ("[Report] TOTAL Get-IntuneAnomaliesReport: {0:N2}s" -f $swReport.Elapsed.TotalSeconds)
 
